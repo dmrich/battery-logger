@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=1000, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FRC 2881 - Battery & CBA Logger</title>
 
   <!-- PWA Manifest and Apple iOS Web App Configuration -->
@@ -14,7 +14,6 @@
 
   <!-- Service Worker Registration Script -->
   <script>
-    // Service Workers require HTTPS or localhost and are strictly prohibited on blob: or file: URLs
     const isSupportedEnvironment = 
       (window.location.protocol === 'https:' || 
        window.location.hostname === 'localhost' || 
@@ -32,6 +31,7 @@
   </script>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
   <style>
     :root {
       --bg-color: #050508;
@@ -59,26 +59,27 @@
     body {
       background-color: var(--bg-color);
       color: var(--text-main);
-      padding: 20px;
-      width: 1000px;
-      min-width: 1000px;
+      padding: 12px;
+      width: 100%;
+      max-width: 1000px;
       margin: 0 auto;
     }
 
-    /* Header & Branding */
     header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding-bottom: 15px;
-      margin-bottom: 15px;
+      padding-bottom: 12px;
+      margin-bottom: 14px;
       border-bottom: 2px solid var(--accent-pink);
+      flex-wrap: wrap;
+      gap: 10px;
     }
 
     .title-group {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 10px;
     }
 
     .logo-badge {
@@ -86,7 +87,7 @@
       border: 2px solid var(--accent-pink);
       color: var(--accent-pink);
       font-weight: 900;
-      padding: 6px 14px;
+      padding: 6px 12px;
       border-radius: 8px;
       letter-spacing: 1.5px;
       font-size: 1.1rem;
@@ -94,28 +95,55 @@
     }
 
     h1 {
-      font-size: 1.3rem;
+      font-size: 1.1rem;
       text-transform: uppercase;
       letter-spacing: 0.8px;
       color: #ffffff;
     }
 
-    .status-badge {
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .sync-badge-btn {
       font-size: 0.85rem;
+      background: linear-gradient(135deg, rgba(255,0,127,0.15) 0%, rgba(59,130,246,0.15) 100%);
+      color: #fff;
+      border: 1px solid var(--accent-pink);
+      padding: 6px 14px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .sync-badge-btn:hover {
+      background: var(--accent-pink);
+      box-shadow: 0 0 10px rgba(255, 0, 127, 0.4);
+    }
+
+    .status-badge {
+      font-size: 0.8rem;
       background-color: rgba(34, 197, 94, 0.1);
       color: var(--status-good);
       border: 1px solid var(--status-good);
-      padding: 4px 12px;
+      padding: 5px 10px;
       border-radius: 20px;
+      white-space: nowrap;
     }
 
-    /* Navigation Tabs */
     .tab-bar {
       display: flex;
-      gap: 10px;
-      margin-bottom: 20px;
+      gap: 8px;
+      margin-bottom: 16px;
       border-bottom: 1px solid var(--border-color);
-      padding-bottom: 10px;
+      padding-bottom: 8px;
     }
 
     .tab-btn {
@@ -124,14 +152,18 @@
       background-color: var(--card-bg);
       border: 1px solid var(--border-color);
       color: var(--text-muted);
-      padding: 12px 16px;
-      border-radius: 6px;
+      padding: 12px 10px;
+      border-radius: 8px;
       font-weight: bold;
       cursor: pointer;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       font-size: 0.9rem;
       transition: all 0.2s ease;
+      min-height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .tab-btn:hover {
@@ -157,16 +189,16 @@
     .card {
       background-color: var(--card-bg);
       border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 20px;
-      margin-bottom: 20px;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
     }
 
     .card-title {
-      font-size: 1rem;
+      font-size: 0.95rem;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      margin-bottom: 18px;
+      margin-bottom: 16px;
       color: #fff;
       display: flex;
       justify-content: space-between;
@@ -176,7 +208,7 @@
     .form-stack {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 14px;
     }
 
     .form-group {
@@ -187,7 +219,7 @@
     }
 
     label {
-      font-size: 0.85rem;
+      font-size: 0.9rem;
       color: var(--text-muted);
       font-weight: 600;
     }
@@ -203,6 +235,7 @@
       outline: none;
       -webkit-appearance: none;
       appearance: none;
+      min-height: 48px;
     }
 
     input:focus, select:focus {
@@ -229,6 +262,7 @@
       justify-content: center;
       gap: 8px;
       transition: all 0.2s ease;
+      min-height: 48px;
     }
 
     .toggle-btn.active {
@@ -246,8 +280,8 @@
     .live-health-banner {
       background-color: #0a0a0d;
       border: 2px solid var(--border-color);
-      padding: 16px 20px;
-      border-radius: 8px;
+      padding: 14px 18px;
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -273,6 +307,11 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
       transition: background 0.2s, box-shadow 0.2s;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
     }
 
     .btn:hover {
@@ -443,29 +482,68 @@
       font-weight: bold;
       font-size: 0.8rem;
     }
+
+    /* In-App Custom Modal (Replaces browser alert and confirm) */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(4px);
+      z-index: 9999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-box {
+      background-color: var(--card-bg);
+      border: 2px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 0 25px rgba(0, 0, 0, 0.8);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .cloud-sync-card {
+      background: linear-gradient(135deg, rgba(255, 0, 127, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%);
+      border: 1px solid var(--accent-pink);
+    }
   </style>
 </head>
 <body>
 
-  <!-- Header -->
   <header>
     <div class="title-group">
       <div class="logo-badge">2881</div>
       <h1>FRC 2881 BATTERY & CBA LOGGER</h1>
     </div>
-    <div>
-      <span class="status-badge">Offline Mode ✓</span>
+    <div class="header-actions">
+      <button type="button" class="sync-badge-btn" onclick="triggerCloudSync()" title="Sync with Google Sheets">
+        <span id="syncIcon">☁️</span>
+        <span id="syncText">Sync Cloud</span>
+      </button>
+      <span class="status-badge" id="appStatusBadge">Offline Ready ✓</span>
     </div>
   </header>
 
-  <!-- Navigation Tabs -->
   <div class="tab-bar">
     <button class="tab-btn active" onclick="switchTab('testDataEntry', event)">Entry Form</button>
     <button class="tab-btn" onclick="switchTab('batteryAnalysis', event)">Analysis</button>
-    <button class="tab-btn" onclick="switchTab('dataManagement', event)">Data</button>
+    <button class="tab-btn" onclick="switchTab('dataManagement', event)">Data & Sync</button>
   </div>
 
-  <!-- TAB 1: Test Data Entry -->
   <div id="testDataEntry" class="tab-content active">
     <div class="card">
       <div class="card-title">Viking CCA & CBA Test Entry</div>
@@ -496,11 +574,11 @@
           <div id="liveHealthBanner" class="live-health-banner">
             <div>
               <div id="liveHealthLabelText" style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); font-weight: bold;">Known Battery Health</div>
-              <div id="liveHealthStatusText" style="font-size: 1.1rem; font-weight: bold; color: var(--text-main); margin-top: 2px;">Select or add a battery</div>
+              <div id="liveHealthStatusText" style="font-size: 1.05rem; font-weight: bold; color: var(--text-main); margin-top: 2px;">Select or add a battery</div>
             </div>
             <div style="text-align: right;">
               <span id="liveHealthScoreDisplay" class="live-score-val" style="color: var(--accent-pink);">--</span>
-              <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: bold;"> / 100</span>
+              <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: bold;"> / 100</span>
             </div>
           </div>
 
@@ -536,7 +614,7 @@
           </div>
 
           <div class="form-group">
-            <label for="measuredCca">Measured CCA <span style="color: var(--accent-pink); font-weight: normal;">(Tester Target Set to 260 CCA)</span></label>
+            <label for="measuredCca">Measured CCA <span style="color: var(--accent-pink); font-weight: normal;">(Target: 260 CCA)</span></label>
             <input type="number" id="measuredCca" placeholder="245" inputmode="numeric" oninput="updateLiveMatchReadyScore()" required>
           </div>
 
@@ -569,7 +647,6 @@
     </div>
   </div>
 
-  <!-- TAB 2: Battery Analysis -->
   <div id="batteryAnalysis" class="tab-content">
     
     <div class="card">
@@ -609,7 +686,7 @@
 
     <!-- Match Ready Fleet Ranking -->
     <div class="card">
-      <div class="card-title">Match Ready Score Ranking (Highest is Best — Anchored to Latest Off-Charger Health)</div>
+      <div class="card-title">Match Ready Score Ranking (Highest is Best — Off-Charger Health)</div>
       <div class="chart-container">
         <canvas id="matchReadyChart"></canvas>
       </div>
@@ -640,6 +717,7 @@
         </div>
       </div>
       <div class="card">
+        <div class="card-title">Fleet Usage Distribution</div>
         <div class="chart-container">
           <canvas id="fleetUsageChart"></canvas>
         </div>
@@ -746,28 +824,55 @@
               <th style="width: 90px;">Actions</th>
             </tr>
           </thead>
-          <tbody id="logsTableBody">
-            <!-- Dynamic editable rows rendered here -->
-          </tbody>
+          <tbody id="logsTableBody"></tbody>
         </table>
       </div>
     </div>
 
   </div>
 
-  <!-- TAB 3: Data Management -->
   <div id="dataManagement" class="tab-content">
-    <div class="card">
-      <div class="card-title">Data Actions & CBA Import</div>
+    
+    <!-- Google Sheets Cloud Sync Setup Card -->
+    <div class="card cloud-sync-card">
+      <div class="card-title" style="color: var(--accent-pink);">
+        <span>☁️ Google Sheets Cloud Sync</span>
+        <span id="cloudStatusTag" style="font-size: 0.75rem; background: rgba(255,0,127,0.2); padding: 3px 8px; border-radius: 4px;">Not Configured</span>
+      </div>
       <div class="actions-stack">
         <div class="form-group">
-          <label>Export All Data Logs (CSV)</label>
-          <button class="btn btn-secondary" onclick="exportCSV()">Export All Data</button>
+          <label for="googleSheetUrlInput">Google Apps Script Web App URL</label>
+          <input type="url" id="googleSheetUrlInput" placeholder="https://script.google.com/macros/s/AKfycb.../exec">
+          <span style="font-size: 0.75rem; color: var(--text-muted);">
+            Paste your published Google Web App URL. All devices using this URL will sync together.
+          </span>
+        </div>
+
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <button type="button" class="btn" style="flex: 1; min-width: 160px;" onclick="saveCloudUrl()">Save Cloud URL</button>
+          <button type="button" class="btn btn-secondary" style="flex: 1; min-width: 160px; border-color: var(--accent-pink); color: var(--accent-pink);" onclick="triggerCloudSync()">
+            ☁️ Sync Now (Push & Pull)
+          </button>
+        </div>
+
+        <div id="syncLogInfo" style="font-size: 0.8rem; color: var(--text-muted); background: #000; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+          Last Synced: <span id="lastSyncedTime">Never</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Local File Imports and Backups -->
+    <div class="card">
+      <div class="card-title">File Actions & CBA Import</div>
+      <div class="actions-stack">
+        <div class="form-group">
+          <label>Export All Data Logs (CSV Backup)</label>
+          <button class="btn btn-secondary" onclick="exportCSV()">Export CSV Backup</button>
         </div>
 
         <div class="form-group" style="margin-top: 10px;">
-          <label>Import Main Data File (CSV)</label>
-          <button class="btn btn-secondary" onclick="document.getElementById('csvFileInput').click()">Import Data File</button>
+          <label>Import Main Data File (CSV Backup)</label>
+          <button class="btn btn-secondary" onclick="document.getElementById('csvFileInput').click()">Import CSV Backup</button>
           <input type="file" id="csvFileInput" class="hidden-file-input" accept=".csv" onchange="importCSV(event)">
         </div>
 
@@ -779,8 +884,32 @@
 
         <div class="form-group" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
           <label style="color: var(--status-bad);">Clear Logs</label>
-          <button class="btn btn-danger" onclick="clearAllLogs()">Delete All Logs</button>
+          <button class="btn btn-danger" onclick="promptClearLogs()">Delete All Logs</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="customModalOverlay" class="modal-overlay">
+    <div class="modal-box">
+      <div id="customModalTitle" style="font-weight: bold; font-size: 1.1rem; color: #fff;">Notification</div>
+      <div id="customModalBody" style="font-size: 0.95rem; color: var(--text-muted); line-height: 1.4;">Message goes here...</div>
+      <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px;">
+        <button type="button" id="customModalCancelBtn" class="btn btn-secondary" style="width: auto; padding: 8px 16px; display: none;">Cancel</button>
+        <button type="button" id="customModalOkBtn" class="btn" style="width: auto; padding: 8px 20px;">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Input Dialog Modal (Replacing prompt()) -->
+  <div id="customPromptOverlay" class="modal-overlay">
+    <div class="modal-box">
+      <div id="customPromptTitle" style="font-weight: bold; font-size: 1.1rem; color: #fff;">Input</div>
+      <div id="customPromptMsg" style="font-size: 0.9rem; color: var(--text-muted);">Please enter a value:</div>
+      <input type="text" id="customPromptInput" placeholder="" style="margin-top: 4px;">
+      <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px;">
+        <button type="button" id="customPromptCancelBtn" class="btn btn-secondary" style="width: auto; padding: 8px 16px;">Cancel</button>
+        <button type="button" id="customPromptSubmitBtn" class="btn" style="width: auto; padding: 8px 20px;">Submit</button>
       </div>
     </div>
   </div>
@@ -790,6 +919,8 @@
     const STORAGE_KEY_BATTERIES = 'frc_2881_battery_list_v26';
     const STORAGE_KEY_META = 'frc_2881_battery_meta_v26';
     const STORAGE_KEY_EVENTS = 'frc_2881_event_list_v26';
+    const STORAGE_KEY_SYNC_URL = 'frc_2881_cloud_sync_url_v1';
+    const STORAGE_KEY_LAST_SYNC = 'frc_2881_last_sync_time_v1';
 
     const defaultBatteries = [];
     const defaultEvents = ['Practice', 'Qualification', 'State Championship'];
@@ -798,6 +929,7 @@
     let eventList = [];
     let batteryMeta = {};
     let batteryLogs = [];
+    let cloudSyncUrl = '';
     
     // Chart Instances
     let chartInstance = null;
@@ -818,6 +950,7 @@
       loadEvents();
       loadMeta();
       loadLogs();
+      loadCloudSettings();
       initAllCharts();
       renderBatterySelectOptions();
       renderEventSelectOptions();
@@ -830,12 +963,203 @@
       document.getElementById('batteryForm').addEventListener('submit', handleFormSubmit);
     });
 
-    // Helper: Natural Alphanumeric Sort for Battery Names (e.g. 1, 2, 10 instead of 1, 10, 2)
+    function showModalAlert(title, message, callback) {
+      const overlay = document.getElementById('customModalOverlay');
+      document.getElementById('customModalTitle').textContent = title;
+      document.getElementById('customModalBody').textContent = message;
+      document.getElementById('customModalCancelBtn').style.display = 'none';
+
+      const okBtn = document.getElementById('customModalOkBtn');
+      okBtn.onclick = () => {
+        overlay.classList.remove('active');
+        if (callback) callback();
+      };
+      overlay.classList.add('active');
+    }
+
+    function showModalConfirm(title, message, onConfirm) {
+      const overlay = document.getElementById('customModalOverlay');
+      document.getElementById('customModalTitle').textContent = title;
+      document.getElementById('customModalBody').textContent = message;
+      
+      const cancelBtn = document.getElementById('customModalCancelBtn');
+      cancelBtn.style.display = 'inline-block';
+      cancelBtn.onclick = () => overlay.classList.remove('active');
+
+      const okBtn = document.getElementById('customModalOkBtn');
+      okBtn.onclick = () => {
+        overlay.classList.remove('active');
+        if (onConfirm) onConfirm();
+      };
+      overlay.classList.add('active');
+    }
+
+    function showModalPrompt(title, message, defaultValue, onSubmit) {
+      const overlay = document.getElementById('customPromptOverlay');
+      document.getElementById('customPromptTitle').textContent = title;
+      document.getElementById('customPromptMsg').textContent = message;
+      const input = document.getElementById('customPromptInput');
+      input.value = defaultValue || '';
+
+      const cancelBtn = document.getElementById('customPromptCancelBtn');
+      cancelBtn.onclick = () => overlay.classList.remove('active');
+
+      const submitBtn = document.getElementById('customPromptSubmitBtn');
+      submitBtn.onclick = () => {
+        const val = input.value;
+        overlay.classList.remove('active');
+        if (onSubmit) onSubmit(val);
+      };
+
+      overlay.classList.add('active');
+      setTimeout(() => input.focus(), 100);
+    }
+
+    function loadCloudSettings() {
+      cloudSyncUrl = localStorage.getItem(STORAGE_KEY_SYNC_URL) || '';
+      const input = document.getElementById('googleSheetUrlInput');
+      if (input) input.value = cloudSyncUrl;
+
+      const lastSync = localStorage.getItem(STORAGE_KEY_LAST_SYNC);
+      if (lastSync) {
+        document.getElementById('lastSyncedTime').textContent = new Date(lastSync).toLocaleString();
+      }
+
+      updateCloudStatusTag();
+    }
+
+    function updateCloudStatusTag() {
+      const tag = document.getElementById('cloudStatusTag');
+      if (cloudSyncUrl && cloudSyncUrl.trim().startsWith('http')) {
+        tag.textContent = 'Configured ✓';
+        tag.style.background = 'rgba(34, 197, 94, 0.2)';
+        tag.style.color = 'var(--status-good)';
+      } else {
+        tag.textContent = 'Not Configured';
+        tag.style.background = 'rgba(255, 0, 127, 0.2)';
+        tag.style.color = 'var(--accent-pink)';
+      }
+    }
+
+    function saveCloudUrl() {
+      const input = document.getElementById('googleSheetUrlInput');
+      const cleanUrl = input.value.trim();
+
+      if (!cleanUrl) {
+        localStorage.removeItem(STORAGE_KEY_SYNC_URL);
+        cloudSyncUrl = '';
+        updateCloudStatusTag();
+        showModalAlert('Cloud URL Cleared', 'Google Sheets sync URL has been removed.');
+        return;
+      }
+
+      if (!cleanUrl.startsWith('https://script.google.com/')) {
+        showModalAlert('Invalid URL', 'Please enter a valid Google Apps Script Web App URL starting with https://script.google.com/...');
+        return;
+      }
+
+      cloudSyncUrl = cleanUrl;
+      localStorage.setItem(STORAGE_KEY_SYNC_URL, cloudSyncUrl);
+      updateCloudStatusTag();
+      showModalAlert('Saved!', 'Cloud Sync URL saved successfully. You can now tap Sync Now.');
+    }
+
+    async function triggerCloudSync() {
+      if (!cloudSyncUrl || !cloudSyncUrl.startsWith('http')) {
+        showModalAlert('Sync URL Needed', 'Please enter and save your Google Apps Script Web App URL in the "Data & Sync" tab first.');
+        switchTab('dataManagement', { currentTarget: document.querySelectorAll('.tab-btn')[2] });
+        return;
+      }
+
+      if (!navigator.onLine) {
+        showModalAlert('Offline', 'Your device is currently offline. Connect to Wi-Fi or cellular data to sync with Google Sheets.');
+        return;
+      }
+
+      const syncIcon = document.getElementById('syncIcon');
+      const syncText = document.getElementById('syncText');
+      syncIcon.textContent = '⏳';
+      syncText.textContent = 'Syncing...';
+
+      const payload = {
+        action: 'sync',
+        clientTimestamp: new Date().toISOString(),
+        logs: batteryLogs,
+        batteries: batteryList,
+        events: eventList,
+        meta: batteryMeta
+      };
+
+      try {
+        // Send payload using text/plain to avoid pre-flight CORS blocks with Google Apps Script
+        const response = await fetch(cloudSyncUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (result && result.success) {
+          if (Array.isArray(result.logs)) {
+            batteryLogs = result.logs;
+            saveLogs();
+          }
+          if (Array.isArray(result.batteries)) {
+            batteryList = sortAlphanumeric([...new Set([...batteryList, ...result.batteries])]);
+            saveBatteries();
+          }
+          if (Array.isArray(result.events)) {
+            eventList = [...new Set([...eventList, ...result.events])];
+            saveEvents();
+          }
+          if (result.meta && typeof result.meta === 'object') {
+            batteryMeta = Object.assign({}, batteryMeta, result.meta);
+            saveMeta();
+          }
+
+          const nowIso = new Date().toISOString();
+          localStorage.setItem(STORAGE_KEY_LAST_SYNC, nowIso);
+          document.getElementById('lastSyncedTime').textContent = new Date(nowIso).toLocaleString();
+
+          renderBatterySelectOptions();
+          renderEventSelectOptions();
+          populateFilterBatteryDropdown();
+          populateFilterEventDropdown();
+          renderTable();
+          updateAllCharts();
+          syncMetaAndHealthToForm();
+
+          syncIcon.textContent = '✓';
+          syncText.textContent = 'Synced!';
+          setTimeout(() => {
+            syncIcon.textContent = '☁️';
+            syncText.textContent = 'Sync Cloud';
+          }, 3000);
+
+          showModalAlert('Sync Complete', `Successfully synced with Google Sheets! Master database contains ${batteryLogs.length} total test records.`);
+        } else {
+          throw new Error(result.error || 'Unknown response format from Google Apps Script');
+        }
+      } catch (err) {
+        console.error('Sync Error:', err);
+        syncIcon.textContent = '⚠️';
+        syncText.textContent = 'Failed';
+        setTimeout(() => {
+          syncIcon.textContent = '☁️';
+          syncText.textContent = 'Sync Cloud';
+        }, 4000);
+
+        showModalAlert('Sync Failed', `Could not communicate with Google Sheets. Please verify the Web App deployment has "Who has access" set to "Anyone".\n\nDetails: ${err.message}`);
+      }
+    }
+
     function sortAlphanumeric(array) {
       return array.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
     }
 
-    // Source-Aware Match Ready Score Algorithm
     function calculateMatchReadyScore(log) {
       const sohScore = log.sohPct || 0;
       const socScore = log.socPct || 0;
@@ -995,7 +1319,7 @@
       document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
 
       document.getElementById(tabId).classList.add('active');
-      evt.currentTarget.classList.add('active');
+      if (evt && evt.currentTarget) evt.currentTarget.classList.add('active');
 
       if (tabId === 'batteryAnalysis') {
         setTimeout(() => {
@@ -1139,18 +1463,19 @@
     function handleEventSelectChange() {
       const select = document.getElementById('eventSelect');
       if (select.value === 'ADD_NEW_EVENT') {
-        const newEvtName = prompt('Enter new Event Name (e.g. World Championship):');
-        if (newEvtName && newEvtName.trim().length > 0) {
-          const cleanEvt = newEvtName.trim();
-          if (!eventList.includes(cleanEvt)) {
-            eventList.push(cleanEvt);
-            saveEvents();
-            populateFilterEventDropdown();
+        showModalPrompt('New Event', 'Enter event name (e.g. World Championship):', '', (newEvtName) => {
+          if (newEvtName && newEvtName.trim().length > 0) {
+            const cleanEvt = newEvtName.trim();
+            if (!eventList.includes(cleanEvt)) {
+              eventList.push(cleanEvt);
+              saveEvents();
+              populateFilterEventDropdown();
+            }
+            renderEventSelectOptions(cleanEvt);
+          } else {
+            select.value = eventList[0] || '';
           }
-          renderEventSelectOptions(cleanEvt);
-        } else {
-          select.value = eventList[0] || '';
-        }
+        });
       }
     }
 
@@ -1173,19 +1498,20 @@
     function handleBatterySelectChange() {
       const select = document.getElementById('batterySelect');
       if (select.value === 'ADD_NEW') {
-        const newBatName = prompt('Enter new battery name/identifier (e.g. 26-A, 2026-1):');
-        if (newBatName && newBatName.trim().length > 0) {
-          const cleanName = newBatName.trim();
-          if (!batteryList.includes(cleanName)) {
-            batteryList.push(cleanName);
-            saveBatteries();
-            populateFilterBatteryDropdown();
+        showModalPrompt('Add Battery', 'Enter battery identifier (e.g. 26-A, 2026-1):', '', (newBatName) => {
+          if (newBatName && newBatName.trim().length > 0) {
+            const cleanName = newBatName.trim();
+            if (!batteryList.includes(cleanName)) {
+              batteryList.push(cleanName);
+              saveBatteries();
+              populateFilterBatteryDropdown();
+            }
+            renderBatterySelectOptions(cleanName);
+          } else {
+            select.value = batteryList[0] || 'ADD_NEW';
+            syncMetaAndHealthToForm();
           }
-          renderBatterySelectOptions(cleanName);
-        } else {
-          select.value = batteryList[0] || 'ADD_NEW';
-          syncMetaAndHealthToForm();
-        }
+        });
       } else {
         syncMetaAndHealthToForm();
       }
@@ -1194,24 +1520,25 @@
     function handleTableBatteryChange(id) {
       const select = document.getElementById(`edit-battery-${id}`);
       if (select.value === 'ADD_NEW') {
-        const newBatName = prompt('Enter new battery name/identifier:');
-        if (newBatName && newBatName.trim().length > 0) {
-          const cleanName = newBatName.trim();
-          if (!batteryList.includes(cleanName)) {
-            batteryList.push(cleanName);
-            saveBatteries();
-            populateFilterBatteryDropdown();
-            renderBatterySelectOptions(cleanName);
+        showModalPrompt('Add Battery', 'Enter new battery identifier:', '', (newBatName) => {
+          if (newBatName && newBatName.trim().length > 0) {
+            const cleanName = newBatName.trim();
+            if (!batteryList.includes(cleanName)) {
+              batteryList.push(cleanName);
+              saveBatteries();
+              populateFilterBatteryDropdown();
+              renderBatterySelectOptions(cleanName);
+            }
+            const opt = document.createElement('option');
+            opt.value = cleanName;
+            opt.textContent = cleanName;
+            opt.selected = true;
+            select.appendChild(opt);
+            select.value = cleanName;
+          } else {
+            select.value = select.dataset.previousValue || select.options[1]?.value || 'ADD_NEW';
           }
-          const opt = document.createElement('option');
-          opt.value = cleanName;
-          opt.textContent = cleanName;
-          opt.selected = true;
-          select.appendChild(opt);
-          select.value = cleanName;
-        } else {
-          select.value = select.dataset.previousValue || select.options[1]?.value || 'ADD_NEW';
-        }
+        });
       } else {
         select.dataset.previousValue = select.value;
       }
@@ -1228,13 +1555,13 @@
 
       const selectedBattery = document.getElementById('batterySelect').value;
       if (selectedBattery === 'ADD_NEW' || !selectedBattery) {
-        alert('Please select or add a valid battery name.');
+        showModalAlert('Name Required', 'Please select or add a valid battery name.');
         return;
       }
 
       const selectedEvent = document.getElementById('eventSelect').value;
       if (selectedEvent === 'ADD_NEW_EVENT' || !selectedEvent) {
-        alert('Please select or add a valid event name.');
+        showModalAlert('Event Required', 'Please select or add a valid event name.');
         return;
       }
 
@@ -1276,7 +1603,7 @@
       document.getElementById('rint').value = '';
       updateLiveMatchReadyScore();
 
-      alert(`Log saved for ${selectedBattery}!`);
+      showModalAlert('Success', `Log saved for ${selectedBattery}! Remember to tap Sync Cloud when you have internet.`);
     }
 
     function saveRow(id) {
@@ -1321,11 +1648,11 @@
       renderTable();
       updateAllCharts();
       updateLiveMatchReadyScore();
-      alert(`Entry updated successfully!`);
+      showModalAlert('Updated', `Entry for ${log.batteryName} updated successfully!`);
     }
 
     function deleteLog(id) {
-      if (confirm('Delete entry?')) {
+      showModalConfirm('Delete Entry', 'Are you sure you want to permanently delete this test entry?', () => {
         batteryLogs = batteryLogs.filter(item => item.id !== id);
         saveLogs();
         populateFilterBatteryDropdown();
@@ -1333,11 +1660,11 @@
         renderTable();
         updateAllCharts();
         updateLiveMatchReadyScore();
-      }
+      });
     }
 
-    function clearAllLogs() {
-      if (confirm('Delete ALL battery logs?')) {
+    function promptClearLogs() {
+      showModalConfirm('Delete All Logs', 'Are you sure you want to delete ALL local battery logs on this device? (This cannot be undone)', () => {
         batteryLogs = [];
         saveLogs();
         populateFilterBatteryDropdown();
@@ -1345,7 +1672,8 @@
         renderTable();
         updateAllCharts();
         updateLiveMatchReadyScore();
-      }
+        showModalAlert('Cleared', 'All battery logs have been deleted from this device.');
+      });
     }
 
     function getFilteredLogs() {
@@ -1721,7 +2049,7 @@
 
     function exportCSV() {
       if (batteryLogs.length === 0) {
-        alert('No data to export!');
+        showModalAlert('Empty Export', 'No data to export!');
         return;
       }
 
@@ -1805,21 +2133,19 @@
           renderTable();
           updateAllCharts();
           updateLiveMatchReadyScore();
-          alert(`Imported ${newLogs.length} entries!`);
+          showModalAlert('Import Success', `Imported ${newLogs.length} entries!`);
         } else {
-          alert('Could not parse valid records.');
+          showModalAlert('Import Error', 'Could not parse valid records.');
         }
       };
       reader.readAsText(file);
       e.target.value = '';
     }
 
-    // Parse West Mountain Radio CBA Export Filenames & Content (e.g., 2881-2026-A -> 26-A)
     function parseCbaBatteryName(rawName) {
       if (!rawName) return '';
       let clean = rawName.trim().replace(/^"|"$/g, '');
 
-      // Regex matches formats like 2881-2026-A or 2881-A-2026-01-19
       const matchFull = clean.match(/\d{3,4}[-_](?:20)?(\d{2})[-_]([A-Za-z0-9]+)/) || clean.match(/\d{3,4}[-_]([A-Za-z0-9]+)[-_](?:20)?(\d{2})/);
       
       if (matchFull) {
@@ -1870,9 +2196,9 @@
           renderTable();
           updateAllCharts();
           syncMetaAndHealthToForm();
-          alert(`Successfully imported CBA Ah capacity for ${parsedCount} battery entry/entries!`);
+          showModalAlert('CBA Import Complete', `Successfully imported CBA Ah capacity for ${parsedCount} battery entry/entries!`);
         } else {
-          alert('Could not find valid Battery Name and Amp-Hour Capacity values in the file.');
+          showModalAlert('CBA Import Error', 'Could not find valid Battery Name and Amp-Hour Capacity values in the file.');
         }
       };
       reader.readAsText(file);
