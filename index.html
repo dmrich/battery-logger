@@ -483,7 +483,7 @@
       font-size: 0.8rem;
     }
 
-    /* In-App Custom Modal (Replaces browser alert and confirm) */
+    /* Custom In-App Modals */
     .modal-overlay {
       position: fixed;
       top: 0;
@@ -890,6 +890,7 @@
     </div>
   </div>
 
+  <!-- Custom Alert/Confirm Modal -->
   <div id="customModalOverlay" class="modal-overlay">
     <div class="modal-box">
       <div id="customModalTitle" style="font-weight: bold; font-size: 1.1rem; color: #fff;">Notification</div>
@@ -901,7 +902,7 @@
     </div>
   </div>
 
-  <!-- Custom Input Dialog Modal (Replacing prompt()) -->
+  <!-- Custom Input Dialog Modal -->
   <div id="customPromptOverlay" class="modal-overlay">
     <div class="modal-box">
       <div id="customPromptTitle" style="font-weight: bold; font-size: 1.1rem; color: #fff;">Input</div>
@@ -1043,7 +1044,7 @@
 
     function saveCloudUrl() {
       const input = document.getElementById('googleSheetUrlInput');
-      const cleanUrl = input.value.trim();
+      const cleanUrl = (input.value || '').trim();
 
       if (!cleanUrl) {
         localStorage.removeItem(STORAGE_KEY_SYNC_URL);
@@ -1091,7 +1092,6 @@
       };
 
       try {
-        // Send payload using text/plain to avoid pre-flight CORS blocks with Google Apps Script
         const response = await fetch(cloudSyncUrl, {
           method: 'POST',
           headers: {
@@ -1104,15 +1104,24 @@
 
         if (result && result.success) {
           if (Array.isArray(result.logs)) {
-            batteryLogs = result.logs;
+            batteryLogs = result.logs.map(log => ({
+              ...log,
+              id: String(log.id || Date.now()),
+              batteryName: String(log.batteryName || ''),
+              event: String(log.event || ''),
+              source: String(log.source || 'From Charger'),
+              status: String(log.status || 'Good Pass'),
+              dateCode: String(log.dateCode || ''),
+              purchaseDate: String(log.purchaseDate || '')
+            }));
             saveLogs();
           }
           if (Array.isArray(result.batteries)) {
-            batteryList = sortAlphanumeric([...new Set([...batteryList, ...result.batteries])]);
+            batteryList = sortAlphanumeric([...new Set([...batteryList, ...result.batteries.map(String)])]);
             saveBatteries();
           }
           if (Array.isArray(result.events)) {
-            eventList = [...new Set([...eventList, ...result.events])];
+            eventList = [...new Set([...eventList, ...result.events.map(String)])].filter(e => e.trim().length > 0);
             saveEvents();
           }
           if (result.meta && typeof result.meta === 'object') {
@@ -1139,7 +1148,7 @@
             syncText.textContent = 'Sync Cloud';
           }, 3000);
 
-          showModalAlert('Sync Complete', `Successfully synced with Google Sheets! Master database contains ${batteryLogs.length} total test records.`);
+          showModalAlert('Sync Complete', `Successfully synced with Google Sheets! Fleet contains ${batteryLogs.length} total test records.`);
         } else {
           throw new Error(result.error || 'Unknown response format from Google Apps Script');
         }
@@ -1157,17 +1166,17 @@
     }
 
     function sortAlphanumeric(array) {
-      return array.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+      return array.sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
     }
 
     function calculateMatchReadyScore(log) {
-      const sohScore = log.sohPct || 0;
-      const socScore = log.socPct || 0;
+      const sohScore = parseFloat(log.sohPct) || 0;
+      const socScore = parseFloat(log.socPct) || 0;
 
       const rint = parseFloat(log.rint) || 19.0;
       const rintScore = Math.max(0, Math.min(100, ((19.0 - rint) / (19.0 - 11.0)) * 100));
 
-      const measuredCca = log.measuredCca || 0;
+      const measuredCca = parseFloat(log.measuredCca) || 0;
       const ratedCca = 260;
       const ccaScore = Math.min(100, (measuredCca / ratedCca) * 100);
 
@@ -1245,8 +1254,8 @@
         return;
       }
 
-      const chargerLog = batteryLogs.find(l => l.batteryName === selectedBattery && l.source === 'From Charger');
-      const latestLog = chargerLog || batteryLogs.find(l => l.batteryName === selectedBattery);
+      const chargerLog = batteryLogs.find(l => String(l.batteryName) === String(selectedBattery) && l.source === 'From Charger');
+      const latestLog = chargerLog || batteryLogs.find(l => String(l.batteryName) === String(selectedBattery));
 
       if (latestLog) {
         const sourceLabel = latestLog.source === 'From Charger' ? 'Off Charger' : 'Off Robot';
@@ -1336,7 +1345,12 @@
     function loadBatteries() {
       const stored = localStorage.getItem(STORAGE_KEY_BATTERIES);
       if (stored) {
-        try { batteryList = sortAlphanumeric(JSON.parse(stored)); } catch (e) { batteryList = []; }
+        try { 
+          const parsed = JSON.parse(stored);
+          batteryList = sortAlphanumeric(Array.isArray(parsed) ? parsed.map(String) : []);
+        } catch (e) { 
+          batteryList = []; 
+        }
       } else {
         batteryList = [];
         saveBatteries();
@@ -1344,21 +1358,29 @@
     }
 
     function saveBatteries() {
-      batteryList = sortAlphanumeric([...new Set(batteryList)]);
+      batteryList = sortAlphanumeric([...new Set(batteryList.map(String))]);
       localStorage.setItem(STORAGE_KEY_BATTERIES, JSON.stringify(batteryList));
     }
 
     function loadEvents() {
       const stored = localStorage.getItem(STORAGE_KEY_EVENTS);
       if (stored) {
-        try { eventList = JSON.parse(stored); } catch (e) { eventList = [...defaultEvents]; }
+        try { 
+          const parsed = JSON.parse(stored);
+          eventList = Array.isArray(parsed) ? parsed.map(String) : [...defaultEvents];
+        } catch (e) { 
+          eventList = [...defaultEvents]; 
+        }
       } else {
         eventList = [...defaultEvents];
         saveEvents();
       }
     }
 
-    function saveEvents() { localStorage.setItem(STORAGE_KEY_EVENTS, JSON.stringify(eventList)); }
+    function saveEvents() { 
+      eventList = [...new Set(eventList.map(String))].filter(e => e.trim().length > 0);
+      localStorage.setItem(STORAGE_KEY_EVENTS, JSON.stringify(eventList)); 
+    }
 
     function loadMeta() {
       const stored = localStorage.getItem(STORAGE_KEY_META);
@@ -1376,7 +1398,7 @@
       const selectedBattery = document.getElementById('batterySelect').value;
       if (!selectedBattery || selectedBattery === 'ADD_NEW') return;
 
-      const dateCode = document.getElementById('dateCode').value.trim();
+      const dateCode = (document.getElementById('dateCode').value || '').trim();
       const purchaseDate = document.getElementById('purchaseDate').value;
       const cbaAh = parseFloat(document.getElementById('cbaAh').value) || '';
 
@@ -1404,9 +1426,10 @@
       const cycleCounts = {};
 
       chrono.forEach(log => {
-        if (!cycleCounts[log.batteryName]) cycleCounts[log.batteryName] = 0;
-        if (log.source === 'From Charger') cycleCounts[log.batteryName] += 1;
-        log.dischargeCycle = cycleCounts[log.batteryName];
+        const bName = String(log.batteryName || '');
+        if (!cycleCounts[bName]) cycleCounts[bName] = 0;
+        if (log.source === 'From Charger') cycleCounts[bName] += 1;
+        log.dischargeCycle = cycleCounts[bName];
       });
     }
 
@@ -1421,15 +1444,15 @@
 
       sortAlphanumeric(batteryList).forEach(bat => {
         const opt = document.createElement('option');
-        opt.value = bat;
-        opt.textContent = bat;
+        opt.value = String(bat);
+        opt.textContent = String(bat);
         select.appendChild(opt);
       });
 
-      if (selectedName && batteryList.includes(selectedName)) {
-        select.value = selectedName;
+      if (selectedName && batteryList.includes(String(selectedName))) {
+        select.value = String(selectedName);
       } else if (batteryList.length > 0) {
-        select.value = batteryList[0];
+        select.value = String(batteryList[0]);
       } else {
         select.value = 'ADD_NEW';
       }
@@ -1448,15 +1471,15 @@
 
       eventList.forEach(evt => {
         const opt = document.createElement('option');
-        opt.value = evt;
-        opt.textContent = evt;
+        opt.value = String(evt);
+        opt.textContent = String(evt);
         select.appendChild(opt);
       });
 
-      if (selectedEvent && eventList.includes(selectedEvent)) {
-        select.value = selectedEvent;
+      if (selectedEvent && eventList.includes(String(selectedEvent))) {
+        select.value = String(selectedEvent);
       } else if (eventList.length > 0) {
-        select.value = eventList[0];
+        select.value = String(eventList[0]);
       }
     }
 
@@ -1464,8 +1487,8 @@
       const select = document.getElementById('eventSelect');
       if (select.value === 'ADD_NEW_EVENT') {
         showModalPrompt('New Event', 'Enter event name (e.g. World Championship):', '', (newEvtName) => {
-          if (newEvtName && newEvtName.trim().length > 0) {
-            const cleanEvt = newEvtName.trim();
+          if (newEvtName && String(newEvtName).trim().length > 0) {
+            const cleanEvt = String(newEvtName).trim();
             if (!eventList.includes(cleanEvt)) {
               eventList.push(cleanEvt);
               saveEvents();
@@ -1499,8 +1522,8 @@
       const select = document.getElementById('batterySelect');
       if (select.value === 'ADD_NEW') {
         showModalPrompt('Add Battery', 'Enter battery identifier (e.g. 26-A, 2026-1):', '', (newBatName) => {
-          if (newBatName && newBatName.trim().length > 0) {
-            const cleanName = newBatName.trim();
+          if (newBatName && String(newBatName).trim().length > 0) {
+            const cleanName = String(newBatName).trim();
             if (!batteryList.includes(cleanName)) {
               batteryList.push(cleanName);
               saveBatteries();
@@ -1521,8 +1544,8 @@
       const select = document.getElementById(`edit-battery-${id}`);
       if (select.value === 'ADD_NEW') {
         showModalPrompt('Add Battery', 'Enter new battery identifier:', '', (newBatName) => {
-          if (newBatName && newBatName.trim().length > 0) {
-            const cleanName = newBatName.trim();
+          if (newBatName && String(newBatName).trim().length > 0) {
+            const cleanName = String(newBatName).trim();
             if (!batteryList.includes(cleanName)) {
               batteryList.push(cleanName);
               saveBatteries();
@@ -1572,7 +1595,7 @@
       const newEntry = {
         id: Date.now().toString(),
         batteryName: selectedBattery,
-        dateCode: document.getElementById('dateCode').value.trim(),
+        dateCode: (document.getElementById('dateCode').value || '').trim(),
         purchaseDate: document.getElementById('purchaseDate').value,
         cbaAh: !isNaN(cbaAhVal) ? Number(cbaAhVal.toFixed(2)) : '',
         source: document.getElementById('fromChargerValue').value,
@@ -1603,14 +1626,14 @@
       document.getElementById('rint').value = '';
       updateLiveMatchReadyScore();
 
-      showModalAlert('Success', `Log saved for ${selectedBattery}! Remember to tap Sync Cloud when you have internet.`);
+      showModalAlert('Success', `Log saved for ${selectedBattery}! Remember to tap Sync Cloud when connected to the internet.`);
     }
 
     function saveRow(id) {
       const log = batteryLogs.find(l => l.id === id);
       if (!log) return;
 
-      const editedBattery = document.getElementById(`edit-battery-${id}`).value.trim();
+      const editedBattery = (document.getElementById(`edit-battery-${id}`).value || '').trim();
       if (editedBattery && editedBattery !== 'ADD_NEW') {
         log.batteryName = editedBattery;
         if (!batteryList.includes(editedBattery)) {
@@ -1632,7 +1655,7 @@
       const rintVal = parseFloat(document.getElementById(`edit-rint-${id}`).value);
       log.rint = !isNaN(rintVal) ? Number(rintVal.toFixed(3)) : 0;
 
-      const editedEvent = document.getElementById(`edit-event-${id}`).value.trim();
+      const editedEvent = (document.getElementById(`edit-event-${id}`).value || '').trim();
       log.event = editedEvent;
 
       if (editedEvent && !eventList.includes(editedEvent)) {
@@ -1682,9 +1705,9 @@
       const batteryFilter = document.getElementById('filterBattery').value;
 
       return batteryLogs.filter(log => {
-        const matchesEvent = eventFilter === 'ALL' || log.event === eventFilter;
-        const matchesStatus = statusFilter === 'ALL' || log.status === statusFilter;
-        const matchesBattery = batteryFilter === 'ALL' || log.batteryName === batteryFilter;
+        const matchesEvent = eventFilter === 'ALL' || String(log.event) === String(eventFilter);
+        const matchesStatus = statusFilter === 'ALL' || String(log.status) === String(statusFilter);
+        const matchesBattery = batteryFilter === 'ALL' || String(log.batteryName) === String(batteryFilter);
 
         return matchesEvent && matchesStatus && matchesBattery;
       });
@@ -1708,10 +1731,10 @@
 
         const displayCba = log.cbaAh || (batteryMeta[log.batteryName] ? batteryMeta[log.batteryName].cbaAh : '') || '-';
 
-        const allBats = sortAlphanumeric([...new Set([...batteryList, log.batteryName])]);
+        const allBats = sortAlphanumeric([...new Set([...batteryList.map(String), String(log.batteryName)])]);
         let batOptions = `<option value="ADD_NEW">+ Add New...</option>`;
         allBats.forEach(b => {
-          batOptions += `<option value="${escapeHtml(b)}" ${b === log.batteryName ? 'selected' : ''}>${escapeHtml(b)}</option>`;
+          batOptions += `<option value="${escapeHtml(b)}" ${b === String(log.batteryName) ? 'selected' : ''}>${escapeHtml(b)}</option>`;
         });
 
         const tr = document.createElement('tr');
@@ -1762,7 +1785,10 @@
       const select = document.getElementById('filterBattery');
       const currentValue = select.value;
 
-      const allBatteries = sortAlphanumeric([...new Set([...batteryList, ...batteryLogs.map(item => item.batteryName)])]);
+      const allBatteries = sortAlphanumeric([...new Set([
+        ...batteryList.map(String), 
+        ...batteryLogs.map(item => String(item.batteryName || ''))
+      ])].filter(b => b.trim().length > 0));
 
       select.innerHTML = '<option value="ALL">All Batteries (Graph)</option>';
       allBatteries.forEach(bat => {
@@ -1781,7 +1807,10 @@
       const select = document.getElementById('filterEvent');
       const currentValue = select.value;
 
-      const allEvents = [...new Set([...eventList, ...batteryLogs.map(item => item.event).filter(e => e && e.trim().length > 0)])];
+      const allEvents = [...new Set([
+        ...eventList.map(e => String(e).trim()),
+        ...batteryLogs.map(item => String(item.event || '').trim())
+      ])].filter(e => e.length > 0);
 
       select.innerHTML = '<option value="ALL">All Events</option>';
       allEvents.forEach(evt => {
@@ -1940,24 +1969,28 @@
       const selectedEvent = document.getElementById('filterEvent').value;
 
       document.querySelectorAll('.chart-battery-label').forEach(el => {
-        let labelText = selectedBattery === 'ALL' ? 'All Records' : selectedBattery;
+        let labelText = selectedBattery === 'ALL' ? 'All Records' : String(selectedBattery);
         if (selectedEvent !== 'ALL') labelText += ` (${selectedEvent})`;
         el.textContent = labelText;
       });
 
       if (selectedBattery === 'ALL') {
-        const totalChargerLogs = batteryLogs.filter(r => r.source === 'From Charger' && (selectedEvent === 'ALL' || r.event === selectedEvent)).length;
+        const totalChargerLogs = batteryLogs.filter(r => r.source === 'From Charger' && (selectedEvent === 'ALL' || String(r.event) === String(selectedEvent))).length;
         document.getElementById('cycleCounterDisplay').textContent = `${totalChargerLogs} (Total Across Fleet)`;
       } else {
-        const filteredBatLogs = batteryLogs.filter(r => r.batteryName === selectedBattery && (selectedEvent === 'ALL' || r.event === selectedEvent));
+        const filteredBatLogs = batteryLogs.filter(r => String(r.batteryName) === String(selectedBattery) && (selectedEvent === 'ALL' || String(r.event) === String(selectedEvent)));
         const maxCycle = Math.max(...filteredBatLogs.map(r => r.dischargeCycle || 0), 0);
         document.getElementById('cycleCounterDisplay').textContent = `${maxCycle} Cycles (${selectedBattery})`;
       }
 
-      const allUniqueBats = sortAlphanumeric([...new Set([...batteryList, ...batteryLogs.map(b => b.batteryName)])]);
+      const allUniqueBats = sortAlphanumeric([...new Set([
+        ...batteryList.map(String), 
+        ...batteryLogs.map(b => String(b.batteryName || ''))
+      ])].filter(b => b.trim().length > 0));
+
       const matchScores = allUniqueBats.map(bat => {
-        const chargerLog = batteryLogs.find(l => l.batteryName === bat && l.source === 'From Charger' && (selectedEvent === 'ALL' || l.event === selectedEvent));
-        const fallbackLog = batteryLogs.find(l => l.batteryName === bat && (selectedEvent === 'ALL' || l.event === selectedEvent));
+        const chargerLog = batteryLogs.find(l => String(l.batteryName) === String(bat) && l.source === 'From Charger' && (selectedEvent === 'ALL' || String(l.event) === String(selectedEvent)));
+        const fallbackLog = batteryLogs.find(l => String(l.batteryName) === String(bat) && (selectedEvent === 'ALL' || String(l.event) === String(selectedEvent)));
         const activeLog = chargerLog || fallbackLog;
         return activeLog ? calculateMatchReadyScore(activeLog) : 0;
       });
@@ -1967,7 +2000,7 @@
       matchReadyChartInstance.update();
 
       const cbaData = allUniqueBats.map(bat => {
-        const logWithCba = batteryLogs.find(l => l.batteryName === bat && l.cbaAh);
+        const logWithCba = batteryLogs.find(l => String(l.batteryName) === String(bat) && l.cbaAh);
         if (logWithCba && logWithCba.cbaAh) return parseFloat(logWithCba.cbaAh);
         return batteryMeta[bat] && batteryMeta[bat].cbaAh ? parseFloat(batteryMeta[bat].cbaAh) : 0;
       });
@@ -1977,8 +2010,8 @@
       cbaFleetChartInstance.update();
 
       const fleetSohData = allUniqueBats.map(bat => {
-        const latest = batteryLogs.find(l => l.batteryName === bat && (selectedEvent === 'ALL' || l.event === selectedEvent));
-        return latest ? latest.sohPct : 0;
+        const latest = batteryLogs.find(l => String(l.batteryName) === String(bat) && (selectedEvent === 'ALL' || String(l.event) === String(selectedEvent)));
+        return latest ? (parseFloat(latest.sohPct) || 0) : 0;
       });
 
       cbaVsSohChartInstance.data.labels = allUniqueBats;
@@ -1990,32 +2023,32 @@
       fleetSohChartInstance.data.datasets[0].data = fleetSohData;
       fleetSohChartInstance.update();
 
-      const fleetUsageData = allUniqueBats.map(bat => batteryLogs.filter(l => l.batteryName === bat && l.source === 'From Charger' && (selectedEvent === 'ALL' || l.event === selectedEvent)).length);
+      const fleetUsageData = allUniqueBats.map(bat => batteryLogs.filter(l => String(l.batteryName) === String(bat) && l.source === 'From Charger' && (selectedEvent === 'ALL' || String(l.event) === String(selectedEvent))).length);
       fleetUsageChartInstance.data.labels = allUniqueBats;
       fleetUsageChartInstance.data.datasets[0].data = fleetUsageData;
       fleetUsageChartInstance.update();
 
       let records = [...batteryLogs].reverse();
       if (selectedBattery !== 'ALL') {
-        records = records.filter(r => r.batteryName === selectedBattery);
+        records = records.filter(r => String(r.batteryName) === String(selectedBattery));
       }
       if (selectedEvent !== 'ALL') {
-        records = records.filter(r => r.event === selectedEvent);
+        records = records.filter(r => String(r.event) === String(selectedEvent));
       }
 
       chartInstance.data.labels = records.map(r => `${r.batteryName} (C#${r.dischargeCycle})`);
-      chartInstance.data.datasets[0].data = records.map(r => r.measuredCca);
-      chartInstance.data.datasets[1].data = records.map(r => r.sohPct);
+      chartInstance.data.datasets[0].data = records.map(r => parseFloat(r.measuredCca) || 0);
+      chartInstance.data.datasets[1].data = records.map(r => parseFloat(r.sohPct) || 0);
       chartInstance.update();
 
       const vDropLabels = [];
       const vDropData = [];
       records.forEach((r, idx) => {
         if (r.source === 'From Robot') {
-          const matchingChargerLog = records.slice(0, idx).reverse().find(l => l.batteryName === r.batteryName && l.source === 'From Charger');
+          const matchingChargerLog = records.slice(0, idx).reverse().find(l => String(l.batteryName) === String(r.batteryName) && l.source === 'From Charger');
           if (matchingChargerLog) {
             vDropLabels.push(`${r.batteryName} (C#${r.dischargeCycle})`);
-            vDropData.push(Number((matchingChargerLog.voltage - r.voltage).toFixed(2)));
+            vDropData.push(Number((parseFloat(matchingChargerLog.voltage) - parseFloat(r.voltage)).toFixed(2)));
           }
         }
       });
@@ -2025,25 +2058,25 @@
       voltageDropChartInstance.update();
 
       sohVsCyclesChartInstance.data.labels = records.map(r => `C#${r.dischargeCycle} (${r.batteryName})`);
-      sohVsCyclesChartInstance.data.datasets[0].data = records.map(r => r.sohPct);
+      sohVsCyclesChartInstance.data.datasets[0].data = records.map(r => parseFloat(r.sohPct) || 0);
       sohVsCyclesChartInstance.update();
 
       const chargerRecords = records.filter(r => r.source === 'From Charger');
       chargerVoltageChartInstance.data.labels = chargerRecords.map(r => `${r.batteryName} (C#${r.dischargeCycle})`);
-      chargerVoltageChartInstance.data.datasets[0].data = chargerRecords.map(r => r.voltage);
+      chargerVoltageChartInstance.data.datasets[0].data = chargerRecords.map(r => parseFloat(r.voltage) || 0);
       chargerVoltageChartInstance.update();
 
       const robotRecords = records.filter(r => r.source === 'From Robot');
       robotVoltageChartInstance.data.labels = robotRecords.map(r => `${r.batteryName} (C#${r.dischargeCycle})`);
-      robotVoltageChartInstance.data.datasets[0].data = robotRecords.map(r => r.voltage);
+      robotVoltageChartInstance.data.datasets[0].data = robotRecords.map(r => parseFloat(r.voltage) || 0);
       robotVoltageChartInstance.update();
 
       chargerRintChartInstance.data.labels = chargerRecords.map(r => `${r.batteryName} (C#${r.dischargeCycle})`);
-      chargerRintChartInstance.data.datasets[0].data = chargerRecords.map(r => r.rint);
+      chargerRintChartInstance.data.datasets[0].data = chargerRecords.map(r => parseFloat(r.rint) || 0);
       chargerRintChartInstance.update();
 
       robotRintChartInstance.data.labels = robotRecords.map(r => `${r.batteryName} (C#${r.dischargeCycle})`);
-      robotRintChartInstance.data.datasets[0].data = robotRecords.map(r => r.rint);
+      robotRintChartInstance.data.datasets[0].data = robotRecords.map(r => parseFloat(r.rint) || 0);
       robotRintChartInstance.update();
     }
 
@@ -2107,14 +2140,18 @@
             if (!entry.id) entry.id = Date.now().toString() + i;
 
             if (entry.batteryName) {
-              if (!batteryList.includes(entry.batteryName)) batteryList.push(entry.batteryName);
-              if (!batteryMeta[entry.batteryName]) batteryMeta[entry.batteryName] = {};
-              if (entry.dateCode) batteryMeta[entry.batteryName].dateCode = entry.dateCode;
-              if (entry.purchaseDate) batteryMeta[entry.batteryName].purchaseDate = entry.purchaseDate;
-              if (entry.cbaAh) batteryMeta[entry.batteryName].cbaAh = entry.cbaAh;
+              const bName = String(entry.batteryName);
+              if (!batteryList.includes(bName)) batteryList.push(bName);
+              if (!batteryMeta[bName]) batteryMeta[bName] = {};
+              if (entry.dateCode) batteryMeta[bName].dateCode = entry.dateCode;
+              if (entry.purchaseDate) batteryMeta[bName].purchaseDate = entry.purchaseDate;
+              if (entry.cbaAh) batteryMeta[bName].cbaAh = entry.cbaAh;
             }
 
-            if (entry.event && !eventList.includes(entry.event)) eventList.push(entry.event);
+            if (entry.event) {
+              const evtName = String(entry.event);
+              if (!eventList.includes(evtName)) eventList.push(evtName);
+            }
 
             newLogs.push(entry);
           }
@@ -2144,7 +2181,7 @@
 
     function parseCbaBatteryName(rawName) {
       if (!rawName) return '';
-      let clean = rawName.trim().replace(/^"|"$/g, '');
+      let clean = String(rawName).trim().replace(/^"|"$/g, '');
 
       const matchFull = clean.match(/\d{3,4}[-_](?:20)?(\d{2})[-_]([A-Za-z0-9]+)/) || clean.match(/\d{3,4}[-_]([A-Za-z0-9]+)[-_](?:20)?(\d{2})/);
       
@@ -2206,7 +2243,7 @@
     }
 
     function escapeHtml(str) {
-      return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      return String(str !== undefined && str !== null ? str : '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
   </script>
 </body>
