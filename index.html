@@ -1,0 +1,1887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1000, initial-scale=1.0">
+  <title>FRC 2881 - Battery & CBA Logger</title>
+
+  <!-- PWA Manifest and Apple iOS Web App Configuration -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BatLogger">
+  <link rel="apple-touch-icon" href="https://placehold.co/192x192/050508/ff007f?text=2881">
+
+  <!-- Service Worker Registration Script -->
+  <script>
+    // Service Workers require HTTPS or localhost and are strictly prohibited on blob: or file: URLs
+    const isSupportedEnvironment = 
+      (window.location.protocol === 'https:' || 
+       window.location.hostname === 'localhost' || 
+       window.location.hostname === '127.0.0.1') &&
+      !window.location.href.startsWith('blob:') &&
+      !window.location.protocol.startsWith('blob');
+
+    if ('serviceWorker' in navigator && isSupportedEnvironment) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then((reg) => console.log('Service Worker Ready:', reg.scope))
+          .catch((err) => console.warn('Service Worker registration skipped:', err));
+      });
+    }
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg-color: #050508;
+      --card-bg: #121217;
+      --border-color: #282835;
+      --accent-pink: #ff007f;
+      --accent-pink-hover: #d9006c;
+      --accent-pink-glow: rgba(255, 0, 127, 0.15);
+      --text-main: #f0f0f5;
+      --text-muted: #9595a8;
+      --status-good: #22c55e;
+      --status-fair: #eab308;
+      --status-bad: #ef4444;
+      --status-charge: #3b82f6;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      padding: 20px;
+      width: 1000px;
+      min-width: 1000px;
+      margin: 0 auto;
+    }
+
+    /* Header & Branding */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 15px;
+      margin-bottom: 15px;
+      border-bottom: 2px solid var(--accent-pink);
+    }
+
+    .title-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo-badge {
+      background: #000000;
+      border: 2px solid var(--accent-pink);
+      color: var(--accent-pink);
+      font-weight: 900;
+      padding: 6px 14px;
+      border-radius: 8px;
+      letter-spacing: 1.5px;
+      font-size: 1.1rem;
+      box-shadow: 0 0 10px rgba(255, 0, 127, 0.3);
+    }
+
+    h1 {
+      font-size: 1.3rem;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #ffffff;
+    }
+
+    .status-badge {
+      font-size: 0.85rem;
+      background-color: rgba(34, 197, 94, 0.1);
+      color: var(--status-good);
+      border: 1px solid var(--status-good);
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+
+    /* Navigation Tabs */
+    .tab-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 10px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      text-align: center;
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-size: 0.9rem;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-main);
+      border-color: var(--accent-pink);
+    }
+
+    .tab-btn.active {
+      background-color: var(--accent-pink);
+      color: #ffffff;
+      border-color: var(--accent-pink);
+      box-shadow: 0 0 12px rgba(255, 0, 127, 0.4);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 18px;
+      color: #fff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .form-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+    }
+
+    label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    input, select {
+      width: 100%;
+      background-color: #0a0a0d;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 1rem;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--accent-pink);
+      box-shadow: 0 0 8px rgba(255, 0, 127, 0.3);
+    }
+
+    .toggle-container {
+      width: 100%;
+    }
+
+    .toggle-btn {
+      width: 100%;
+      background-color: #0a0a0d;
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 0.95rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .toggle-btn.active {
+      background-color: var(--accent-pink-glow);
+      border-color: var(--accent-pink);
+      color: var(--accent-pink);
+    }
+
+    .toggle-btn.inactive {
+      background-color: rgba(59, 130, 246, 0.15);
+      border-color: var(--status-charge);
+      color: var(--status-charge);
+    }
+
+    .live-health-banner {
+      background-color: #0a0a0d;
+      border: 2px solid var(--border-color);
+      padding: 16px 20px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all 0.3s ease;
+    }
+
+    .live-score-val {
+      font-size: 1.8rem;
+      font-weight: 900;
+      letter-spacing: 1px;
+    }
+
+    .btn {
+      width: 100%;
+      background-color: var(--accent-pink);
+      color: white;
+      border: none;
+      padding: 14px 20px;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+
+    .btn:hover {
+      background-color: var(--accent-pink-hover);
+      box-shadow: 0 0 10px rgba(255, 0, 127, 0.4);
+    }
+
+    .btn-secondary {
+      background-color: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+    }
+
+    .btn-secondary:hover {
+      background-color: var(--border-color);
+    }
+
+    .btn-danger {
+      background-color: transparent;
+      border: 1px solid var(--status-bad);
+      color: var(--status-bad);
+    }
+
+    .btn-danger:hover {
+      background-color: var(--status-bad);
+      color: white;
+    }
+
+    .actions-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .analysis-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .stat-badge-box {
+      background: #0a0a0d;
+      border: 1px solid var(--border-color);
+      padding: 12px 16px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+
+    .stat-value {
+      font-size: 1.4rem;
+      font-weight: bold;
+      color: var(--accent-pink);
+    }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 900px) {
+      .chart-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .table-container {
+      overflow-x: auto;
+      max-height: 480px;
+      overflow-y: auto;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+    }
+
+    table {
+      min-width: 1600px;
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      background-color: #0a0a0d;
+      color: var(--text-muted);
+      padding: 12px 10px;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      border-bottom: 1px solid var(--border-color);
+      font-weight: 700;
+    }
+
+    td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .edit-input, .edit-select {
+      background-color: #050508;
+      border: 1px solid #282835;
+      color: #fff;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .edit-input:focus, .edit-select:focus {
+      border-color: var(--accent-pink);
+      background-color: #121217;
+    }
+
+    .row-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .save-btn {
+      background: rgba(34, 197, 94, 0.2);
+      border: 1px solid var(--status-good);
+      color: var(--status-good);
+      border-radius: 4px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .save-btn:hover {
+      background: var(--status-good);
+      color: #fff;
+    }
+
+    .delete-btn {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid var(--status-bad);
+      color: var(--status-bad);
+      border-radius: 4px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .delete-btn:hover {
+      background: var(--status-bad);
+      color: #fff;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 280px;
+      width: 100%;
+    }
+
+    .hidden-file-input {
+      display: none;
+    }
+
+    .score-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="title-group">
+      <div class="logo-badge">2881</div>
+      <h1>FRC 2881 BATTERY & CBA LOGGER</h1>
+    </div>
+    <div>
+      <span class="status-badge">Offline Mode ✓</span>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('testDataEntry', event)">Entry Form</button>
+    <button class="tab-btn" onclick="switchTab('batteryAnalysis', event)">Analysis</button>
+    <button class="tab-btn" onclick="switchTab('dataManagement', event)">Data</button>
+  </div>
+
+  <!-- TAB 1: Test Data Entry -->
+  <div id="testDataEntry" class="tab-content active">
+    <div class="card">
+      <div class="card-title">Viking CCA & CBA Test Entry</div>
+      <form id="batteryForm">
+        <div class="form-stack">
+          
+          <div class="form-group">
+            <label for="batterySelect">Battery Name</label>
+            <select id="batterySelect" onchange="handleBatterySelectChange()" required></select>
+          </div>
+
+          <div class="form-group">
+            <label for="dateCode">Date Code (Saved per battery)</label>
+            <input type="text" id="dateCode" placeholder="e.g. C25" onchange="updateBatteryMeta()">
+          </div>
+
+          <div class="form-group">
+            <label for="purchaseDate">Purchase Date (Saved per battery)</label>
+            <input type="date" id="purchaseDate" onchange="updateBatteryMeta()">
+          </div>
+
+          <div class="form-group">
+            <label for="cbaAh">Latest CBA Ah Capacity (Saved per battery) <span style="color: var(--accent-pink); font-weight: normal;">[Optional]</span></label>
+            <input type="number" step="0.01" id="cbaAh" placeholder="e.g. 16.85" onchange="updateBatteryMeta()" oninput="updateLiveMatchReadyScore()">
+          </div>
+
+          <!-- TOP MATCH READY STATUS INDICATOR -->
+          <div id="liveHealthBanner" class="live-health-banner">
+            <div>
+              <div id="liveHealthLabelText" style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); font-weight: bold;">Known Battery Health</div>
+              <div id="liveHealthStatusText" style="font-size: 1.1rem; font-weight: bold; color: var(--text-main); margin-top: 2px;">Select or add a battery</div>
+            </div>
+            <div style="text-align: right;">
+              <span id="liveHealthScoreDisplay" class="live-score-val" style="color: var(--accent-pink);">--</span>
+              <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: bold;"> / 100</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Battery Source</label>
+            <div class="toggle-container">
+              <button type="button" id="sourceToggleBtn" class="toggle-btn active" onclick="toggleSourceState()">
+                <span id="sourceIcon">🔌</span>
+                <span id="sourceLabel">From Charger</span>
+              </button>
+              <input type="hidden" id="fromChargerValue" value="From Charger">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="statusSelect">Status Result</label>
+            <select id="statusSelect" required>
+              <option value="Good Pass" selected>Good Pass</option>
+              <option value="Good Recharge">Good Recharge</option>
+              <option value="Charge & Retest">Charge & Retest</option>
+              <option value="Replace / Bad Cell">Replace / Bad Cell</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="sohPct">State of Health (SOH %)</label>
+            <input type="number" id="sohPct" min="0" max="100" placeholder="92" inputmode="numeric" oninput="updateLiveMatchReadyScore()" required>
+          </div>
+
+          <div class="form-group">
+            <label for="socPct">State of Charge (SOC %)</label>
+            <input type="number" id="socPct" min="0" max="100" placeholder="100" inputmode="numeric" oninput="updateLiveMatchReadyScore()" required>
+          </div>
+
+          <div class="form-group">
+            <label for="measuredCca">Measured CCA <span style="color: var(--accent-pink); font-weight: normal;">(Tester Target Set to 260 CCA)</span></label>
+            <input type="number" id="measuredCca" placeholder="245" inputmode="numeric" oninput="updateLiveMatchReadyScore()" required>
+          </div>
+
+          <div class="form-group">
+            <label for="voltage">Battery Voltage (V)</label>
+            <input type="number" step="0.01" id="voltage" placeholder="12.85" inputmode="decimal" required>
+          </div>
+
+          <div class="form-group">
+            <label for="rint">Internal R (mΩ) [3 Decimal Places]</label>
+            <input type="number" step="0.001" id="rint" placeholder="11.415" inputmode="decimal" oninput="updateLiveMatchReadyScore()" required>
+          </div>
+
+          <div class="form-group">
+            <label for="eventSelect">Event Name</label>
+            <select id="eventSelect" onchange="handleEventSelectChange()" required></select>
+          </div>
+
+          <div class="form-group">
+            <label for="matchNum">Match #</label>
+            <input type="number" id="matchNum" placeholder="12" inputmode="numeric" required>
+          </div>
+
+          <div class="form-group" style="margin-top: 8px;">
+            <button type="submit" class="btn">Save Test Entry</button>
+          </div>
+
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- TAB 2: Battery Analysis -->
+  <div id="batteryAnalysis" class="tab-content">
+    
+    <div class="card">
+      <div class="card-title">Filter & Search Controls</div>
+      <div class="analysis-bar">
+        <div class="form-group">
+          <label for="filterBattery">Target Battery</label>
+          <select id="filterBattery" onchange="updateAllCharts(); renderTable();">
+            <option value="ALL">All Batteries (Graph)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="filterStatus">Filter Status</label>
+          <select id="filterStatus" onchange="renderTable()">
+            <option value="ALL">All Statuses</option>
+            <option value="Good Pass">Good Pass</option>
+            <option value="Good Recharge">Good Recharge</option>
+            <option value="Charge & Retest">Charge & Retest</option>
+            <option value="Replace / Bad Cell">Replace / Bad Cell</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="filterEvent">Filter Event</label>
+          <select id="filterEvent" onchange="updateAllCharts(); renderTable();">
+            <option value="ALL">All Events</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="stat-badge-box">
+        <span style="font-weight: bold; color: var(--text-muted);">Total Charge Cycles Recorded:</span>
+        <span id="cycleCounterDisplay" class="stat-value">0</span>
+      </div>
+    </div>
+
+    <!-- Match Ready Fleet Ranking -->
+    <div class="card">
+      <div class="card-title">Match Ready Score Ranking (Highest is Best — Anchored to Latest Off-Charger Health)</div>
+      <div class="chart-container">
+        <canvas id="matchReadyChart"></canvas>
+      </div>
+    </div>
+
+    <!-- CBA Amp-Hour Capacity Fleet Analysis -->
+    <div class="chart-grid">
+      <div class="card">
+        <div class="card-title">Fleet CBA Capacity (Ah Rating vs 18Ah Rated)</div>
+        <div class="chart-container">
+          <canvas id="cbaFleetChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">CBA Capacity (Ah) vs. Tester SOH %</div>
+        <div class="chart-container">
+          <canvas id="cbaVsSohChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fleet Comparison Charts -->
+    <div class="chart-grid">
+      <div class="card">
+        <div class="card-title">Fleet SOH % Health Ranking</div>
+        <div class="chart-container">
+          <canvas id="fleetSohChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="chart-container">
+          <canvas id="fleetUsageChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Primary CCA Performance & SOH -->
+    <div class="card">
+      <div class="card-title">
+        Primary CCA Performance & SOH %
+        <span class="chart-battery-label" style="font-size:0.8rem; color:var(--text-muted);">All Records</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Voltage Drop Analytics & SOH Lifetime Degradation -->
+    <div class="chart-grid">
+      <div class="card">
+        <div class="card-title">
+          Voltage Drop Per Entry (V)
+          <span class="chart-battery-label" style="font-size:0.8rem; color:var(--text-muted);">All Records</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="voltageDropChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          SOH % vs. Total Charge Cycles
+          <span class="chart-battery-label" style="font-size:0.8rem; color:var(--text-muted);">All Records</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="sohVsCyclesChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charger vs Robot Voltage Charts -->
+    <div class="card">
+      <div class="card-title">
+        Battery Voltage (Removed From Charger)
+        <span class="chart-battery-label" style="font-size:0.8rem; color:var(--text-muted);">All Records</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="chargerVoltageChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        Battery Voltage (Removed From Robot)
+        <span class="chart-battery-label" style="font-size:0.8rem; color:var(--text-muted);">All Records</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="robotVoltageChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Internal Resistance Charts -->
+    <div class="card">
+      <div class="card-title">
+        Internal Resistance (Removed From Charger)
+        <span class="chart-battery-label" style="font-size:0.8rem; color:var(--text-muted);">All Records</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="chargerRintChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        Internal Resistance (Removed From Robot)
+        <span class="chart-battery-label" style="font-size:0.8rem; color:var(--text-muted);">All Records</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="robotRintChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Raw Data Log Table -->
+    <div class="card">
+      <div class="card-title">Raw Collected Data (Editable — Scroll Horizontally ➔)</div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 140px;">Battery Name</th>
+              <th style="width: 140px;">Match Ready</th>
+              <th style="width: 80px;">Charge #</th>
+              <th style="width: 90px;">CBA Ah</th>
+              <th style="width: 100px;">Date Code</th>
+              <th style="width: 130px;">Purchased</th>
+              <th style="width: 130px;">Source</th>
+              <th style="width: 170px;">Status Result</th>
+              <th style="width: 80px;">SOH %</th>
+              <th style="width: 80px;">SOC %</th>
+              <th style="width: 100px;">Meas CCA</th>
+              <th style="width: 90px;">Volts (V)</th>
+              <th style="width: 110px;">Rint (mΩ)</th>
+              <th style="width: 160px;">Event Name</th>
+              <th style="width: 80px;">Match #</th>
+              <th style="width: 90px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="logsTableBody">
+            <!-- Dynamic editable rows rendered here -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TAB 3: Data Management -->
+  <div id="dataManagement" class="tab-content">
+    <div class="card">
+      <div class="card-title">Data Actions & CBA Import</div>
+      <div class="actions-stack">
+        <div class="form-group">
+          <label>Export All Data Logs (CSV)</label>
+          <button class="btn btn-secondary" onclick="exportCSV()">Export All Data</button>
+        </div>
+
+        <div class="form-group" style="margin-top: 10px;">
+          <label>Import Main Data File (CSV)</label>
+          <button class="btn btn-secondary" onclick="document.getElementById('csvFileInput').click()">Import Data File</button>
+          <input type="file" id="csvFileInput" class="hidden-file-input" accept=".csv" onchange="importCSV(event)">
+        </div>
+
+        <div class="form-group" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+          <label style="color: var(--accent-pink);">Import West Mountain Radio CBA Results (CSV)</label>
+          <button class="btn btn-secondary" style="border-color: var(--accent-pink); color: var(--accent-pink);" onclick="document.getElementById('cbaFileInput').click()">Import CBA Test File</button>
+          <input type="file" id="cbaFileInput" class="hidden-file-input" accept=".csv,.txt" onchange="importCBACSV(event)">
+        </div>
+
+        <div class="form-group" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+          <label style="color: var(--status-bad);">Clear Logs</label>
+          <button class="btn btn-danger" onclick="clearAllLogs()">Delete All Logs</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY_LOGS = 'frc_2881_cca_logs_v26';
+    const STORAGE_KEY_BATTERIES = 'frc_2881_battery_list_v26';
+    const STORAGE_KEY_META = 'frc_2881_battery_meta_v26';
+    const STORAGE_KEY_EVENTS = 'frc_2881_event_list_v26';
+
+    const defaultBatteries = [];
+    const defaultEvents = ['Practice', 'Qualification', 'State Championship'];
+
+    let batteryList = [];
+    let eventList = [];
+    let batteryMeta = {};
+    let batteryLogs = [];
+    
+    // Chart Instances
+    let chartInstance = null;
+    let chargerVoltageChartInstance = null;
+    let robotVoltageChartInstance = null;
+    let chargerRintChartInstance = null;
+    let robotRintChartInstance = null;
+    let fleetSohChartInstance = null;
+    let fleetUsageChartInstance = null;
+    let voltageDropChartInstance = null;
+    let sohVsCyclesChartInstance = null;
+    let matchReadyChartInstance = null;
+    let cbaFleetChartInstance = null;
+    let cbaVsSohChartInstance = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadBatteries();
+      loadEvents();
+      loadMeta();
+      loadLogs();
+      initAllCharts();
+      renderBatterySelectOptions();
+      renderEventSelectOptions();
+      populateFilterBatteryDropdown();
+      populateFilterEventDropdown();
+      renderTable();
+      updateAllCharts();
+      syncMetaAndHealthToForm();
+
+      document.getElementById('batteryForm').addEventListener('submit', handleFormSubmit);
+    });
+
+    // Helper: Natural Alphanumeric Sort for Battery Names (e.g. 1, 2, 10 instead of 1, 10, 2)
+    function sortAlphanumeric(array) {
+      return array.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    }
+
+    // Source-Aware Match Ready Score Algorithm
+    function calculateMatchReadyScore(log) {
+      const sohScore = log.sohPct || 0;
+      const socScore = log.socPct || 0;
+
+      const rint = parseFloat(log.rint) || 19.0;
+      const rintScore = Math.max(0, Math.min(100, ((19.0 - rint) / (19.0 - 11.0)) * 100));
+
+      const measuredCca = log.measuredCca || 0;
+      const ratedCca = 260;
+      const ccaScore = Math.min(100, (measuredCca / ratedCca) * 100);
+
+      let baseScore = 0;
+
+      if (log.source === 'From Robot') {
+        baseScore = (sohScore * 0.45) + (rintScore * 0.35) + (ccaScore * 0.20);
+      } else {
+        baseScore = (sohScore * 0.35) + (socScore * 0.25) + (rintScore * 0.25) + (ccaScore * 0.15);
+      }
+
+      const cbaCap = parseFloat(log.cbaAh);
+      if (!isNaN(cbaCap) && cbaCap > 0) {
+        if (cbaCap < 12.0) {
+          baseScore = Math.min(baseScore, 65);
+        } else if (cbaCap < 14.5) {
+          baseScore = Math.min(baseScore, 78);
+        }
+      }
+
+      return Math.round(baseScore);
+    }
+
+    function getMatchReadyBadge(score) {
+      let color = '#22c55e';
+      let bg = 'rgba(34, 197, 94, 0.15)';
+      let label = 'Elims Ready';
+
+      if (score < 70) {
+        color = '#ef4444';
+        bg = 'rgba(239, 68, 68, 0.15)';
+        label = 'Retire';
+      } else if (score < 80) {
+        color = '#eab308';
+        bg = 'rgba(234, 179, 8, 0.15)';
+        label = 'Practice';
+      } else if (score < 90) {
+        color = '#ff007f';
+        bg = 'rgba(255, 0, 127, 0.15)';
+        label = 'Quals Ready';
+      }
+
+      return `<span class="score-badge" style="border: 1px solid ${color}; color: ${color}; background: ${bg};">${score} pts (${label})</span>`;
+    }
+
+    function updateLiveMatchReadyScore() {
+      const selectedBattery = document.getElementById('batterySelect').value;
+      const sohPct = parseInt(document.getElementById('sohPct').value);
+      const socPct = parseInt(document.getElementById('socPct').value);
+      const measuredCca = parseInt(document.getElementById('measuredCca').value);
+      const rint = parseFloat(document.getElementById('rint').value);
+      const cbaAh = parseFloat(document.getElementById('cbaAh').value);
+      const source = document.getElementById('fromChargerValue').value;
+
+      const banner = document.getElementById('liveHealthBanner');
+      const scoreDisp = document.getElementById('liveHealthScoreDisplay');
+      const labelText = document.getElementById('liveHealthLabelText');
+      const statusText = document.getElementById('liveHealthStatusText');
+
+      if (!selectedBattery || selectedBattery === 'ADD_NEW') {
+        scoreDisp.textContent = '--';
+        scoreDisp.style.color = 'var(--text-muted)';
+        statusText.textContent = 'Add or select a battery above';
+        statusText.style.color = 'var(--text-main)';
+        banner.style.borderColor = 'var(--border-color)';
+        banner.style.boxShadow = 'none';
+        return;
+      }
+
+      if (!isNaN(sohPct) && !isNaN(socPct) && !isNaN(measuredCca) && !isNaN(rint)) {
+        labelText.textContent = 'Calculated Health Status (New Input)';
+        const newLog = { sohPct, socPct, ratedCca: 260, measuredCca, rint, cbaAh, source };
+        const score = calculateMatchReadyScore(newLog);
+        renderHealthBannerState(banner, scoreDisp, statusText, score, false);
+        return;
+      }
+
+      const chargerLog = batteryLogs.find(l => l.batteryName === selectedBattery && l.source === 'From Charger');
+      const latestLog = chargerLog || batteryLogs.find(l => l.batteryName === selectedBattery);
+
+      if (latestLog) {
+        const sourceLabel = latestLog.source === 'From Charger' ? 'Off Charger' : 'Off Robot';
+        labelText.textContent = `Last Recorded Health (${selectedBattery} - ${sourceLabel})`;
+        const historicalScore = calculateMatchReadyScore(latestLog);
+        renderHealthBannerState(banner, scoreDisp, statusText, historicalScore, true);
+      } else {
+        scoreDisp.textContent = '--';
+        scoreDisp.style.color = 'var(--text-muted)';
+        statusText.textContent = 'No prior test data logged for this battery';
+        statusText.style.color = 'var(--text-main)';
+        banner.style.borderColor = 'var(--border-color)';
+        banner.style.boxShadow = 'none';
+      }
+    }
+
+    function renderHealthBannerState(banner, scoreDisp, statusText, score, isHistorical) {
+      scoreDisp.textContent = score;
+      const prefix = isHistorical ? 'LAST TEST: ' : '';
+
+      if (score >= 90) {
+        scoreDisp.style.color = 'var(--status-good)';
+        statusText.textContent = `🟢 ${prefix}ELIMINATIONS READY — Optimal Health`;
+        statusText.style.color = 'var(--status-good)';
+        banner.style.borderColor = 'var(--status-good)';
+        banner.style.boxShadow = '0 0 10px rgba(34, 197, 94, 0.2)';
+      } else if (score >= 80) {
+        scoreDisp.style.color = 'var(--accent-pink)';
+        statusText.textContent = `💗 ${prefix}QUALIFICATIONS READY — Strong Performance`;
+        statusText.style.color = 'var(--accent-pink)';
+        banner.style.borderColor = 'var(--accent-pink)';
+        banner.style.boxShadow = '0 0 10px rgba(255, 0, 127, 0.2)';
+      } else if (score >= 70) {
+        scoreDisp.style.color = 'var(--status-fair)';
+        statusText.textContent = `🟡 ${prefix}PRACTICE USE ONLY — Elevated Wear / Low Capacity`;
+        statusText.style.color = 'var(--status-fair)';
+        banner.style.borderColor = 'var(--status-fair)';
+        banner.style.boxShadow = '0 0 10px rgba(234, 179, 8, 0.2)';
+      } else {
+        scoreDisp.style.color = 'var(--status-bad)';
+        statusText.textContent = `⚠️ ${prefix}NOT MATCH READY — High Brownout Risk (Retire)`;
+        statusText.style.color = 'var(--status-bad)';
+        banner.style.borderColor = 'var(--status-bad)';
+        banner.style.boxShadow = '0 0 14px rgba(239, 68, 68, 0.4)';
+      }
+    }
+
+    function toggleSourceState() {
+      const btn = document.getElementById('sourceToggleBtn');
+      const hiddenInput = document.getElementById('fromChargerValue');
+      const icon = document.getElementById('sourceIcon');
+      const label = document.getElementById('sourceLabel');
+
+      if (hiddenInput.value === 'From Charger') {
+        hiddenInput.value = 'From Robot';
+        btn.className = 'toggle-btn inactive';
+        icon.textContent = '🤖';
+        label.textContent = 'From Robot';
+      } else {
+        hiddenInput.value = 'From Charger';
+        btn.className = 'toggle-btn active';
+        icon.textContent = '🔌';
+        label.textContent = 'From Charger';
+      }
+      updateLiveMatchReadyScore();
+    }
+
+    function switchTab(tabId, evt) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+      document.getElementById(tabId).classList.add('active');
+      evt.currentTarget.classList.add('active');
+
+      if (tabId === 'batteryAnalysis') {
+        setTimeout(() => {
+          [chartInstance, chargerVoltageChartInstance, robotVoltageChartInstance, 
+           chargerRintChartInstance, robotRintChartInstance, fleetSohChartInstance, 
+           fleetUsageChartInstance, voltageDropChartInstance, sohVsCyclesChartInstance, 
+           matchReadyChartInstance, cbaFleetChartInstance, cbaVsSohChartInstance].forEach(c => {
+            if (c) c.resize();
+          });
+        }, 50);
+      }
+    }
+
+    function loadBatteries() {
+      const stored = localStorage.getItem(STORAGE_KEY_BATTERIES);
+      if (stored) {
+        try { batteryList = sortAlphanumeric(JSON.parse(stored)); } catch (e) { batteryList = []; }
+      } else {
+        batteryList = [];
+        saveBatteries();
+      }
+    }
+
+    function saveBatteries() {
+      batteryList = sortAlphanumeric([...new Set(batteryList)]);
+      localStorage.setItem(STORAGE_KEY_BATTERIES, JSON.stringify(batteryList));
+    }
+
+    function loadEvents() {
+      const stored = localStorage.getItem(STORAGE_KEY_EVENTS);
+      if (stored) {
+        try { eventList = JSON.parse(stored); } catch (e) { eventList = [...defaultEvents]; }
+      } else {
+        eventList = [...defaultEvents];
+        saveEvents();
+      }
+    }
+
+    function saveEvents() { localStorage.setItem(STORAGE_KEY_EVENTS, JSON.stringify(eventList)); }
+
+    function loadMeta() {
+      const stored = localStorage.getItem(STORAGE_KEY_META);
+      if (stored) {
+        try { batteryMeta = JSON.parse(stored); } catch (e) { batteryMeta = {}; }
+      } else {
+        batteryMeta = {};
+        saveMeta();
+      }
+    }
+
+    function saveMeta() { localStorage.setItem(STORAGE_KEY_META, JSON.stringify(batteryMeta)); }
+
+    function updateBatteryMeta() {
+      const selectedBattery = document.getElementById('batterySelect').value;
+      if (!selectedBattery || selectedBattery === 'ADD_NEW') return;
+
+      const dateCode = document.getElementById('dateCode').value.trim();
+      const purchaseDate = document.getElementById('purchaseDate').value;
+      const cbaAh = parseFloat(document.getElementById('cbaAh').value) || '';
+
+      if (!batteryMeta[selectedBattery]) batteryMeta[selectedBattery] = {};
+      batteryMeta[selectedBattery].dateCode = dateCode;
+      batteryMeta[selectedBattery].purchaseDate = purchaseDate;
+      batteryMeta[selectedBattery].cbaAh = cbaAh;
+      saveMeta();
+    }
+
+    function loadLogs() {
+      const stored = localStorage.getItem(STORAGE_KEY_LOGS);
+      if (stored) {
+        try { batteryLogs = JSON.parse(stored); } catch (e) { batteryLogs = []; }
+      } else {
+        batteryLogs = [];
+        saveLogs();
+      }
+    }
+
+    function saveLogs() { localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(batteryLogs)); }
+
+    function calculateDischargeCycles() {
+      const chrono = [...batteryLogs].reverse();
+      const cycleCounts = {};
+
+      chrono.forEach(log => {
+        if (!cycleCounts[log.batteryName]) cycleCounts[log.batteryName] = 0;
+        if (log.source === 'From Charger') cycleCounts[log.batteryName] += 1;
+        log.dischargeCycle = cycleCounts[log.batteryName];
+      });
+    }
+
+    function renderBatterySelectOptions(selectedName = '') {
+      const select = document.getElementById('batterySelect');
+      select.innerHTML = '';
+
+      const addOpt = document.createElement('option');
+      addOpt.value = 'ADD_NEW';
+      addOpt.textContent = '+ Add New Battery...';
+      select.appendChild(addOpt);
+
+      sortAlphanumeric(batteryList).forEach(bat => {
+        const opt = document.createElement('option');
+        opt.value = bat;
+        opt.textContent = bat;
+        select.appendChild(opt);
+      });
+
+      if (selectedName && batteryList.includes(selectedName)) {
+        select.value = selectedName;
+      } else if (batteryList.length > 0) {
+        select.value = batteryList[0];
+      } else {
+        select.value = 'ADD_NEW';
+      }
+
+      syncMetaAndHealthToForm();
+    }
+
+    function renderEventSelectOptions(selectedEvent = '') {
+      const select = document.getElementById('eventSelect');
+      select.innerHTML = '';
+
+      const addOpt = document.createElement('option');
+      addOpt.value = 'ADD_NEW_EVENT';
+      addOpt.textContent = '+ Add New Event...';
+      select.appendChild(addOpt);
+
+      eventList.forEach(evt => {
+        const opt = document.createElement('option');
+        opt.value = evt;
+        opt.textContent = evt;
+        select.appendChild(opt);
+      });
+
+      if (selectedEvent && eventList.includes(selectedEvent)) {
+        select.value = selectedEvent;
+      } else if (eventList.length > 0) {
+        select.value = eventList[0];
+      }
+    }
+
+    function handleEventSelectChange() {
+      const select = document.getElementById('eventSelect');
+      if (select.value === 'ADD_NEW_EVENT') {
+        const newEvtName = prompt('Enter new Event Name (e.g. World Championship):');
+        if (newEvtName && newEvtName.trim().length > 0) {
+          const cleanEvt = newEvtName.trim();
+          if (!eventList.includes(cleanEvt)) {
+            eventList.push(cleanEvt);
+            saveEvents();
+            populateFilterEventDropdown();
+          }
+          renderEventSelectOptions(cleanEvt);
+        } else {
+          select.value = eventList[0] || '';
+        }
+      }
+    }
+
+    function syncMetaAndHealthToForm() {
+      const selectedBattery = document.getElementById('batterySelect').value;
+
+      if (selectedBattery && selectedBattery !== 'ADD_NEW' && batteryMeta[selectedBattery]) {
+        document.getElementById('dateCode').value = batteryMeta[selectedBattery].dateCode || '';
+        document.getElementById('purchaseDate').value = batteryMeta[selectedBattery].purchaseDate || '';
+        document.getElementById('cbaAh').value = batteryMeta[selectedBattery].cbaAh || '';
+      } else {
+        document.getElementById('dateCode').value = '';
+        document.getElementById('purchaseDate').value = '';
+        document.getElementById('cbaAh').value = '';
+      }
+
+      updateLiveMatchReadyScore();
+    }
+
+    function handleBatterySelectChange() {
+      const select = document.getElementById('batterySelect');
+      if (select.value === 'ADD_NEW') {
+        const newBatName = prompt('Enter new battery name/identifier (e.g. 26-A, 2026-1):');
+        if (newBatName && newBatName.trim().length > 0) {
+          const cleanName = newBatName.trim();
+          if (!batteryList.includes(cleanName)) {
+            batteryList.push(cleanName);
+            saveBatteries();
+            populateFilterBatteryDropdown();
+          }
+          renderBatterySelectOptions(cleanName);
+        } else {
+          select.value = batteryList[0] || 'ADD_NEW';
+          syncMetaAndHealthToForm();
+        }
+      } else {
+        syncMetaAndHealthToForm();
+      }
+    }
+
+    function handleTableBatteryChange(id) {
+      const select = document.getElementById(`edit-battery-${id}`);
+      if (select.value === 'ADD_NEW') {
+        const newBatName = prompt('Enter new battery name/identifier:');
+        if (newBatName && newBatName.trim().length > 0) {
+          const cleanName = newBatName.trim();
+          if (!batteryList.includes(cleanName)) {
+            batteryList.push(cleanName);
+            saveBatteries();
+            populateFilterBatteryDropdown();
+            renderBatterySelectOptions(cleanName);
+          }
+          const opt = document.createElement('option');
+          opt.value = cleanName;
+          opt.textContent = cleanName;
+          opt.selected = true;
+          select.appendChild(opt);
+          select.value = cleanName;
+        } else {
+          select.value = select.dataset.previousValue || select.options[1]?.value || 'ADD_NEW';
+        }
+      } else {
+        select.dataset.previousValue = select.value;
+      }
+    }
+
+    function formatDate(date) {
+      const d = new Date(date);
+      const pad = (n) => n.toString().padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    function handleFormSubmit(e) {
+      e.preventDefault();
+
+      const selectedBattery = document.getElementById('batterySelect').value;
+      if (selectedBattery === 'ADD_NEW' || !selectedBattery) {
+        alert('Please select or add a valid battery name.');
+        return;
+      }
+
+      const selectedEvent = document.getElementById('eventSelect').value;
+      if (selectedEvent === 'ADD_NEW_EVENT' || !selectedEvent) {
+        alert('Please select or add a valid event name.');
+        return;
+      }
+
+      updateBatteryMeta();
+      const rintVal = parseFloat(document.getElementById('rint').value);
+      const cbaAhVal = parseFloat(document.getElementById('cbaAh').value);
+
+      const newEntry = {
+        id: Date.now().toString(),
+        batteryName: selectedBattery,
+        dateCode: document.getElementById('dateCode').value.trim(),
+        purchaseDate: document.getElementById('purchaseDate').value,
+        cbaAh: !isNaN(cbaAhVal) ? Number(cbaAhVal.toFixed(2)) : '',
+        source: document.getElementById('fromChargerValue').value,
+        status: document.getElementById('statusSelect').value,
+        sohPct: parseInt(document.getElementById('sohPct').value),
+        socPct: parseInt(document.getElementById('socPct').value),
+        ratedCca: 260,
+        measuredCca: parseInt(document.getElementById('measuredCca').value),
+        voltage: parseFloat(document.getElementById('voltage').value),
+        rint: !isNaN(rintVal) ? Number(rintVal.toFixed(3)) : 0,
+        timestamp: formatDate(new Date()),
+        event: selectedEvent,
+        matchNum: parseInt(document.getElementById('matchNum').value)
+      };
+
+      batteryLogs.unshift(newEntry);
+      saveLogs();
+
+      populateFilterBatteryDropdown();
+      populateFilterEventDropdown();
+      renderTable();
+      updateAllCharts();
+
+      document.getElementById('sohPct').value = '';
+      document.getElementById('socPct').value = '';
+      document.getElementById('measuredCca').value = '';
+      document.getElementById('voltage').value = '';
+      document.getElementById('rint').value = '';
+      updateLiveMatchReadyScore();
+
+      alert(`Log saved for ${selectedBattery}!`);
+    }
+
+    function saveRow(id) {
+      const log = batteryLogs.find(l => l.id === id);
+      if (!log) return;
+
+      const editedBattery = document.getElementById(`edit-battery-${id}`).value.trim();
+      if (editedBattery && editedBattery !== 'ADD_NEW') {
+        log.batteryName = editedBattery;
+        if (!batteryList.includes(editedBattery)) {
+          batteryList.push(editedBattery);
+          saveBatteries();
+          renderBatterySelectOptions(editedBattery);
+          populateFilterBatteryDropdown();
+        }
+      }
+
+      log.source = document.getElementById(`edit-source-${id}`).value;
+      log.status = document.getElementById(`edit-status-${id}`).value;
+      log.sohPct = parseInt(document.getElementById(`edit-soh-${id}`).value) || 0;
+      log.socPct = parseInt(document.getElementById(`edit-soc-${id}`).value) || 0;
+      log.measuredCca = parseInt(document.getElementById(`edit-mcca-${id}`).value) || 0;
+      log.ratedCca = 260;
+      log.voltage = parseFloat(document.getElementById(`edit-volts-${id}`).value) || 0;
+      
+      const rintVal = parseFloat(document.getElementById(`edit-rint-${id}`).value);
+      log.rint = !isNaN(rintVal) ? Number(rintVal.toFixed(3)) : 0;
+
+      const editedEvent = document.getElementById(`edit-event-${id}`).value.trim();
+      log.event = editedEvent;
+
+      if (editedEvent && !eventList.includes(editedEvent)) {
+        eventList.push(editedEvent);
+        saveEvents();
+        renderEventSelectOptions(editedEvent);
+      }
+
+      log.matchNum = parseInt(document.getElementById(`edit-match-${id}`).value) || 0;
+
+      saveLogs();
+      populateFilterEventDropdown();
+      renderTable();
+      updateAllCharts();
+      updateLiveMatchReadyScore();
+      alert(`Entry updated successfully!`);
+    }
+
+    function deleteLog(id) {
+      if (confirm('Delete entry?')) {
+        batteryLogs = batteryLogs.filter(item => item.id !== id);
+        saveLogs();
+        populateFilterBatteryDropdown();
+        populateFilterEventDropdown();
+        renderTable();
+        updateAllCharts();
+        updateLiveMatchReadyScore();
+      }
+    }
+
+    function clearAllLogs() {
+      if (confirm('Delete ALL battery logs?')) {
+        batteryLogs = [];
+        saveLogs();
+        populateFilterBatteryDropdown();
+        populateFilterEventDropdown();
+        renderTable();
+        updateAllCharts();
+        updateLiveMatchReadyScore();
+      }
+    }
+
+    function getFilteredLogs() {
+      const eventFilter = document.getElementById('filterEvent').value;
+      const statusFilter = document.getElementById('filterStatus').value;
+      const batteryFilter = document.getElementById('filterBattery').value;
+
+      return batteryLogs.filter(log => {
+        const matchesEvent = eventFilter === 'ALL' || log.event === eventFilter;
+        const matchesStatus = statusFilter === 'ALL' || log.status === statusFilter;
+        const matchesBattery = batteryFilter === 'ALL' || log.batteryName === batteryFilter;
+
+        return matchesEvent && matchesStatus && matchesBattery;
+      });
+    }
+
+    function renderTable() {
+      calculateDischargeCycles();
+      const filtered = getFilteredLogs();
+      const tbody = document.getElementById('logsTableBody');
+      tbody.innerHTML = '';
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="16" style="text-align:center; color:var(--text-muted); padding: 16px;">No entries found.</td></tr>`;
+        return;
+      }
+
+      filtered.forEach(log => {
+        const rintFormatted = typeof log.rint === 'number' ? log.rint.toFixed(3) : parseFloat(log.rint).toFixed(3);
+        const score = calculateMatchReadyScore(log);
+        const scoreBadge = getMatchReadyBadge(score);
+
+        const displayCba = log.cbaAh || (batteryMeta[log.batteryName] ? batteryMeta[log.batteryName].cbaAh : '') || '-';
+
+        const allBats = sortAlphanumeric([...new Set([...batteryList, log.batteryName])]);
+        let batOptions = `<option value="ADD_NEW">+ Add New...</option>`;
+        allBats.forEach(b => {
+          batOptions += `<option value="${escapeHtml(b)}" ${b === log.batteryName ? 'selected' : ''}>${escapeHtml(b)}</option>`;
+        });
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>
+            <select id="edit-battery-${log.id}" class="edit-select" onchange="handleTableBatteryChange('${log.id}')">
+              ${batOptions}
+            </select>
+          </td>
+          <td>${scoreBadge}</td>
+          <td style="text-align:center;"><strong>#${log.dischargeCycle || 0}</strong></td>
+          <td><strong style="color:var(--accent-pink);">${displayCba} Ah</strong></td>
+          <td>${escapeHtml(log.dateCode || '-')}</td>
+          <td>${escapeHtml(log.purchaseDate || '-')}</td>
+          <td>
+            <select id="edit-source-${log.id}" class="edit-select">
+              <option value="From Charger" ${log.source === 'From Charger' ? 'selected' : ''}>Charger</option>
+              <option value="From Robot" ${log.source === 'From Robot' ? 'selected' : ''}>Robot</option>
+            </select>
+          </td>
+          <td>
+            <select id="edit-status-${log.id}" class="edit-select">
+              <option value="Good Pass" ${log.status === 'Good Pass' ? 'selected' : ''}>Good Pass</option>
+              <option value="Good Recharge" ${log.status === 'Good Recharge' ? 'selected' : ''}>Good Recharge</option>
+              <option value="Charge & Retest" ${log.status === 'Charge & Retest' ? 'selected' : ''}>Charge & Retest</option>
+              <option value="Replace / Bad Cell" ${log.status === 'Replace / Bad Cell' ? 'selected' : ''}>Replace/Bad</option>
+            </select>
+          </td>
+          <td><input type="number" id="edit-soh-${log.id}" class="edit-input" value="${log.sohPct}"></td>
+          <td><input type="number" id="edit-soc-${log.id}" class="edit-input" value="${log.socPct}"></td>
+          <td><input type="number" id="edit-mcca-${log.id}" class="edit-input" value="${log.measuredCca}"></td>
+          <td><input type="number" step="0.01" id="edit-volts-${log.id}" class="edit-input" value="${log.voltage}"></td>
+          <td><input type="number" step="0.001" id="edit-rint-${log.id}" class="edit-input" value="${rintFormatted}"></td>
+          <td><input type="text" id="edit-event-${log.id}" class="edit-input" value="${escapeHtml(log.event)}"></td>
+          <td><input type="number" id="edit-match-${log.id}" class="edit-input" value="${log.matchNum}"></td>
+          <td>
+            <div class="row-actions">
+              <button class="save-btn" onclick="saveRow('${log.id}')" title="Save Row">✓</button>
+              <button class="delete-btn" onclick="deleteLog('${log.id}')" title="Delete Row">✕</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function populateFilterBatteryDropdown() {
+      const select = document.getElementById('filterBattery');
+      const currentValue = select.value;
+
+      const allBatteries = sortAlphanumeric([...new Set([...batteryList, ...batteryLogs.map(item => item.batteryName)])]);
+
+      select.innerHTML = '<option value="ALL">All Batteries (Graph)</option>';
+      allBatteries.forEach(bat => {
+        const opt = document.createElement('option');
+        opt.value = bat;
+        opt.textContent = bat;
+        select.appendChild(opt);
+      });
+
+      if (allBatteries.includes(currentValue)) {
+        select.value = currentValue;
+      }
+    }
+
+    function populateFilterEventDropdown() {
+      const select = document.getElementById('filterEvent');
+      const currentValue = select.value;
+
+      const allEvents = [...new Set([...eventList, ...batteryLogs.map(item => item.event).filter(e => e && e.trim().length > 0)])];
+
+      select.innerHTML = '<option value="ALL">All Events</option>';
+      allEvents.forEach(evt => {
+        const opt = document.createElement('option');
+        opt.value = evt;
+        opt.textContent = evt;
+        select.appendChild(opt);
+      });
+
+      if (allEvents.includes(currentValue)) {
+        select.value = currentValue;
+      }
+    }
+
+    function initAllCharts() {
+      const ctxMatchReady = document.getElementById('matchReadyChart').getContext('2d');
+      matchReadyChartInstance = new Chart(ctxMatchReady, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: 'Latest Match Ready Score', data: [], backgroundColor: '#ff007f' }] },
+        options: getSingleAxisChartOptions('Match Ready Score (0-100)', '#ff007f', 0, 100)
+      });
+
+      const ctxCbaFleet = document.getElementById('cbaFleetChart').getContext('2d');
+      cbaFleetChartInstance = new Chart(ctxCbaFleet, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: 'CBA Capacity (Ah)', data: [], backgroundColor: '#3b82f6' }] },
+        options: getSingleAxisChartOptions('CBA Capacity (Ah)', '#3b82f6', 0, 20)
+      });
+
+      const ctxCbaSoh = document.getElementById('cbaVsSohChart').getContext('2d');
+      cbaVsSohChartInstance = new Chart(ctxCbaSoh, {
+        type: 'bar',
+        data: {
+          labels: [],
+          datasets: [
+            { label: 'CBA Capacity (Ah)', data: [], backgroundColor: '#3b82f6', yAxisID: 'yCba' },
+            { label: 'SOH %', data: [], backgroundColor: 'rgba(34, 197, 94, 0.4)', borderColor: '#22c55e', borderWidth: 1, yAxisID: 'ySoh' }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { ticks: { color: '#9595a8', font: { size: 11 } }, grid: { color: '#282835' } },
+            yCba: { type: 'linear', position: 'left', min: 0, max: 20, title: { display: true, text: 'Ah Capacity', color: '#3b82f6' }, ticks: { color: '#3b82f6' }, grid: { color: '#282835' } },
+            ySoh: { type: 'linear', position: 'right', min: 0, max: 100, title: { display: true, text: 'SOH %', color: '#22c55e' }, ticks: { color: '#22c55e' }, grid: { drawOnChartArea: false } }
+          },
+          plugins: { legend: { labels: { color: '#f0f0f5' } } }
+        }
+      });
+
+      const ctxFleetSoh = document.getElementById('fleetSohChart').getContext('2d');
+      fleetSohChartInstance = new Chart(ctxFleetSoh, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: 'Latest SOH %', data: [], backgroundColor: '#22c55e' }] },
+        options: getSingleAxisChartOptions('State of Health (%)', '#22c55e', 0, 100)
+      });
+
+      const ctxFleetUsage = document.getElementById('fleetUsageChart').getContext('2d');
+      fleetUsageChartInstance = new Chart(ctxFleetUsage, {
+        type: 'doughnut',
+        data: {
+          labels: [],
+          datasets: [{ data: [], backgroundColor: ['#ff007f', '#3b82f6', '#22c55e', '#eab308', '#ef4444', '#a855f7', '#ec4899', '#14b8a6', '#f97316'] }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#f0f0f5' } } } }
+      });
+
+      const ctx1 = document.getElementById('trendChart').getContext('2d');
+      chartInstance = new Chart(ctx1, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            { label: 'Measured CCA', data: [], borderColor: '#ff007f', backgroundColor: 'rgba(255, 0, 127, 0.15)', yAxisID: 'yCca', tension: 0.2, fill: true },
+            { label: 'SOH %', data: [], borderColor: '#22c55e', borderDash: [5, 5], yAxisID: 'ySoh', tension: 0.2 }
+          ]
+        },
+        options: getChartOptions('CCA', 'SOH %', '#ff007f', '#22c55e')
+      });
+
+      const ctxVDrop = document.getElementById('voltageDropChart').getContext('2d');
+      voltageDropChartInstance = new Chart(ctxVDrop, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: 'Voltage Drop (Charger - Robot)', data: [], backgroundColor: '#ff007f' }] },
+        options: getSingleAxisChartOptions('Voltage Drop (V)', '#ff007f', 0, 5)
+      });
+
+      const ctxSohCycles = document.getElementById('sohVsCyclesChart').getContext('2d');
+      sohVsCyclesChartInstance = new Chart(ctxSohCycles, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label: 'SOH % vs Cycles', data: [], borderColor: '#a855f7', backgroundColor: 'rgba(168, 85, 247, 0.15)', tension: 0.2, fill: true }] },
+        options: getSingleAxisChartOptions('SOH %', '#a855f7', 0, 100)
+      });
+
+      const ctx2 = document.getElementById('chargerVoltageChart').getContext('2d');
+      chargerVoltageChartInstance = new Chart(ctx2, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label: 'Charger Voltage (V)', data: [], borderColor: '#22c55e', backgroundColor: 'rgba(34, 197, 94, 0.15)', yAxisID: 'yVolts', tension: 0.2, fill: true }] },
+        options: getSingleAxisChartOptions('Voltage (V)', '#22c55e', 10, 15)
+      });
+
+      const ctx3 = document.getElementById('robotVoltageChart').getContext('2d');
+      robotVoltageChartInstance = new Chart(ctx3, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label: 'Robot Post-Use Voltage (V)', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.15)', yAxisID: 'yVolts', tension: 0.2, fill: true }] },
+        options: getSingleAxisChartOptions('Voltage (V)', '#3b82f6', 9, 14)
+      });
+
+      const ctx4 = document.getElementById('chargerRintChart').getContext('2d');
+      chargerRintChartInstance = new Chart(ctx4, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label: 'Charger Rint (mΩ)', data: [], borderColor: '#eab308', backgroundColor: 'rgba(234, 179, 8, 0.15)', yAxisID: 'yVolts', tension: 0.2, fill: true }] },
+        options: getSingleAxisChartOptions('Charger Rint (mΩ)', '#eab308', 5, 30)
+      });
+
+      const ctx5 = document.getElementById('robotRintChart').getContext('2d');
+      robotRintChartInstance = new Chart(ctx5, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label: 'Robot Post-Use Rint (mΩ)', data: [], borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.15)', yAxisID: 'yVolts', tension: 0.2, fill: true }] },
+        options: getSingleAxisChartOptions('Robot Rint (mΩ)', '#ef4444', 5, 30)
+      });
+    }
+
+    function getChartOptions(leftTitle, rightTitle, leftColor, rightColor) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { color: '#9595a8', font: { size: 11 } }, grid: { color: '#282835' } },
+          yCca: { type: 'linear', position: 'left', title: { display: true, text: leftTitle, color: leftColor, font: { size: 11 } }, ticks: { color: leftColor, font: { size: 11 } }, grid: { color: '#282835' } },
+          ySoh: { type: 'linear', position: 'right', min: 0, max: 100, title: { display: true, text: rightTitle, color: rightColor, font: { size: 11 } }, ticks: { color: rightColor, font: { size: 11 } }, grid: { drawOnChartArea: false } }
+        },
+        plugins: { legend: { labels: { color: '#f0f0f5', font: { size: 12 } } } }
+      };
+    }
+
+    function getSingleAxisChartOptions(titleText, lineColor, minVal, maxVal) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { color: '#9595a8', font: { size: 11 } }, grid: { color: '#282835' } },
+          yVolts: { type: 'linear', position: 'left', min: minVal, max: maxVal, title: { display: true, text: titleText, color: lineColor, font: { size: 11 } }, ticks: { color: lineColor, font: { size: 11 } }, grid: { color: '#282835' } }
+        },
+        plugins: { legend: { labels: { color: '#f0f0f5', font: { size: 12 } } } }
+      };
+    }
+
+    function updateAllCharts() {
+      if (!chartInstance) return;
+
+      calculateDischargeCycles();
+
+      const selectedBattery = document.getElementById('filterBattery').value;
+      const selectedEvent = document.getElementById('filterEvent').value;
+
+      document.querySelectorAll('.chart-battery-label').forEach(el => {
+        let labelText = selectedBattery === 'ALL' ? 'All Records' : selectedBattery;
+        if (selectedEvent !== 'ALL') labelText += ` (${selectedEvent})`;
+        el.textContent = labelText;
+      });
+
+      if (selectedBattery === 'ALL') {
+        const totalChargerLogs = batteryLogs.filter(r => r.source === 'From Charger' && (selectedEvent === 'ALL' || r.event === selectedEvent)).length;
+        document.getElementById('cycleCounterDisplay').textContent = `${totalChargerLogs} (Total Across Fleet)`;
+      } else {
+        const filteredBatLogs = batteryLogs.filter(r => r.batteryName === selectedBattery && (selectedEvent === 'ALL' || r.event === selectedEvent));
+        const maxCycle = Math.max(...filteredBatLogs.map(r => r.dischargeCycle || 0), 0);
+        document.getElementById('cycleCounterDisplay').textContent = `${maxCycle} Cycles (${selectedBattery})`;
+      }
+
+      const allUniqueBats = sortAlphanumeric([...new Set([...batteryList, ...batteryLogs.map(b => b.batteryName)])]);
+      const matchScores = allUniqueBats.map(bat => {
+        const chargerLog = batteryLogs.find(l => l.batteryName === bat && l.source === 'From Charger' && (selectedEvent === 'ALL' || l.event === selectedEvent));
+        const fallbackLog = batteryLogs.find(l => l.batteryName === bat && (selectedEvent === 'ALL' || l.event === selectedEvent));
+        const activeLog = chargerLog || fallbackLog;
+        return activeLog ? calculateMatchReadyScore(activeLog) : 0;
+      });
+
+      matchReadyChartInstance.data.labels = allUniqueBats;
+      matchReadyChartInstance.data.datasets[0].data = matchScores;
+      matchReadyChartInstance.update();
+
+      const cbaData = allUniqueBats.map(bat => {
+        const logWithCba = batteryLogs.find(l => l.batteryName === bat && l.cbaAh);
+        if (logWithCba && logWithCba.cbaAh) return parseFloat(logWithCba.cbaAh);
+        return batteryMeta[bat] && batteryMeta[bat].cbaAh ? parseFloat(batteryMeta[bat].cbaAh) : 0;
+      });
+
+      cbaFleetChartInstance.data.labels = allUniqueBats;
+      cbaFleetChartInstance.data.datasets[0].data = cbaData;
+      cbaFleetChartInstance.update();
+
+      const fleetSohData = allUniqueBats.map(bat => {
+        const latest = batteryLogs.find(l => l.batteryName === bat && (selectedEvent === 'ALL' || l.event === selectedEvent));
+        return latest ? latest.sohPct : 0;
+      });
+
+      cbaVsSohChartInstance.data.labels = allUniqueBats;
+      cbaVsSohChartInstance.data.datasets[0].data = cbaData;
+      cbaVsSohChartInstance.data.datasets[1].data = fleetSohData;
+      cbaVsSohChartInstance.update();
+
+      fleetSohChartInstance.data.labels = allUniqueBats;
+      fleetSohChartInstance.data.datasets[0].data = fleetSohData;
+      fleetSohChartInstance.update();
+
+      const fleetUsageData = allUniqueBats.map(bat => batteryLogs.filter(l => l.batteryName === bat && l.source === 'From Charger' && (selectedEvent === 'ALL' || l.event === selectedEvent)).length);
+      fleetUsageChartInstance.data.labels = allUniqueBats;
+      fleetUsageChartInstance.data.datasets[0].data = fleetUsageData;
+      fleetUsageChartInstance.update();
+
+      let records = [...batteryLogs].reverse();
+      if (selectedBattery !== 'ALL') {
+        records = records.filter(r => r.batteryName === selectedBattery);
+      }
+      if (selectedEvent !== 'ALL') {
+        records = records.filter(r => r.event === selectedEvent);
+      }
+
+      chartInstance.data.labels = records.map(r => `${r.batteryName} (C#${r.dischargeCycle})`);
+      chartInstance.data.datasets[0].data = records.map(r => r.measuredCca);
+      chartInstance.data.datasets[1].data = records.map(r => r.sohPct);
+      chartInstance.update();
+
+      const vDropLabels = [];
+      const vDropData = [];
+      records.forEach((r, idx) => {
+        if (r.source === 'From Robot') {
+          const matchingChargerLog = records.slice(0, idx).reverse().find(l => l.batteryName === r.batteryName && l.source === 'From Charger');
+          if (matchingChargerLog) {
+            vDropLabels.push(`${r.batteryName} (C#${r.dischargeCycle})`);
+            vDropData.push(Number((matchingChargerLog.voltage - r.voltage).toFixed(2)));
+          }
+        }
+      });
+
+      voltageDropChartInstance.data.labels = vDropLabels.length > 0 ? vDropLabels : records.map(r => `${r.batteryName} (C#${r.dischargeCycle})`);
+      voltageDropChartInstance.data.datasets[0].data = vDropData.length > 0 ? vDropData : records.map(r => 0);
+      voltageDropChartInstance.update();
+
+      sohVsCyclesChartInstance.data.labels = records.map(r => `C#${r.dischargeCycle} (${r.batteryName})`);
+      sohVsCyclesChartInstance.data.datasets[0].data = records.map(r => r.sohPct);
+      sohVsCyclesChartInstance.update();
+
+      const chargerRecords = records.filter(r => r.source === 'From Charger');
+      chargerVoltageChartInstance.data.labels = chargerRecords.map(r => `${r.batteryName} (C#${r.dischargeCycle})`);
+      chargerVoltageChartInstance.data.datasets[0].data = chargerRecords.map(r => r.voltage);
+      chargerVoltageChartInstance.update();
+
+      const robotRecords = records.filter(r => r.source === 'From Robot');
+      robotVoltageChartInstance.data.labels = robotRecords.map(r => `${r.batteryName} (C#${r.dischargeCycle})`);
+      robotVoltageChartInstance.data.datasets[0].data = robotRecords.map(r => r.voltage);
+      robotVoltageChartInstance.update();
+
+      chargerRintChartInstance.data.labels = chargerRecords.map(r => `${r.batteryName} (C#${r.dischargeCycle})`);
+      chargerRintChartInstance.data.datasets[0].data = chargerRecords.map(r => r.rint);
+      chargerRintChartInstance.update();
+
+      robotRintChartInstance.data.labels = robotRecords.map(r => `${r.batteryName} (C#${r.dischargeCycle})`);
+      robotRintChartInstance.data.datasets[0].data = robotRecords.map(r => r.rint);
+      robotRintChartInstance.update();
+    }
+
+    function exportCSV() {
+      if (batteryLogs.length === 0) {
+        alert('No data to export!');
+        return;
+      }
+
+      calculateDischargeCycles();
+
+      const headers = ['id', 'batteryName', 'matchReadyScore', 'cbaAh', 'dischargeCycle', 'dateCode', 'purchaseDate', 'source', 'status', 'sohPct', 'socPct', 'ratedCca', 'measuredCca', 'voltage', 'rint', 'timestamp', 'event', 'matchNum'];
+      const csvRows = [headers.join(',')];
+
+      batteryLogs.forEach(log => {
+        const values = headers.map(header => {
+          let val = log[header] !== undefined ? log[header] : '';
+          if (header === 'matchReadyScore') val = calculateMatchReadyScore(log);
+          if (header === 'ratedCca') val = 260;
+          if (header === 'rint' && typeof val === 'number') val = val.toFixed(3);
+          return `"${String(val).replace(/"/g, '""')}"`;
+        });
+        csvRows.push(values.join(','));
+      });
+
+      const csvBlob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(csvBlob);
+      const a = document.createElement('a');
+      a.setAttribute('href', url);
+      a.setAttribute('download', `frc2881_battery_logs_${new Date().toISOString().slice(0,10)}.csv`);
+      a.click();
+    }
+
+    function importCSV(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const contents = evt.target.result;
+        const lines = contents.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        
+        if (lines.length <= 1) return;
+
+        const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, ''));
+        const newLogs = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          const row = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+          if (row && row.length === headers.length) {
+            const entry = {};
+            headers.forEach((h, idx) => {
+              let val = row[idx].replace(/^"|"$/g, '').replace(/""/g, '"');
+              if (['sohPct', 'socPct', 'ratedCca', 'measuredCca', 'voltage', 'rint', 'matchNum', 'dischargeCycle', 'cbaAh'].includes(h)) {
+                val = parseFloat(val) || 0;
+                if (h === 'rint') val = Number(val.toFixed(3));
+              }
+              entry[h] = val;
+            });
+            entry.ratedCca = 260;
+            if (!entry.id) entry.id = Date.now().toString() + i;
+
+            if (entry.batteryName) {
+              if (!batteryList.includes(entry.batteryName)) batteryList.push(entry.batteryName);
+              if (!batteryMeta[entry.batteryName]) batteryMeta[entry.batteryName] = {};
+              if (entry.dateCode) batteryMeta[entry.batteryName].dateCode = entry.dateCode;
+              if (entry.purchaseDate) batteryMeta[entry.batteryName].purchaseDate = entry.purchaseDate;
+              if (entry.cbaAh) batteryMeta[entry.batteryName].cbaAh = entry.cbaAh;
+            }
+
+            if (entry.event && !eventList.includes(entry.event)) eventList.push(entry.event);
+
+            newLogs.push(entry);
+          }
+        }
+
+        if (newLogs.length > 0) {
+          saveBatteries();
+          saveEvents();
+          saveMeta();
+          batteryLogs = [...newLogs, ...batteryLogs];
+          saveLogs();
+          renderBatterySelectOptions();
+          renderEventSelectOptions();
+          populateFilterBatteryDropdown();
+          populateFilterEventDropdown();
+          renderTable();
+          updateAllCharts();
+          updateLiveMatchReadyScore();
+          alert(`Imported ${newLogs.length} entries!`);
+        } else {
+          alert('Could not parse valid records.');
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    }
+
+    // Parse West Mountain Radio CBA Export Filenames & Content (e.g., 2881-2026-A -> 26-A)
+    function parseCbaBatteryName(rawName) {
+      if (!rawName) return '';
+      let clean = rawName.trim().replace(/^"|"$/g, '');
+
+      // Regex matches formats like 2881-2026-A or 2881-A-2026-01-19
+      const matchFull = clean.match(/\d{3,4}[-_](?:20)?(\d{2})[-_]([A-Za-z0-9]+)/) || clean.match(/\d{3,4}[-_]([A-Za-z0-9]+)[-_](?:20)?(\d{2})/);
+      
+      if (matchFull) {
+        const yr = matchFull[1].length === 4 ? matchFull[1].slice(2) : matchFull[1];
+        const letter = matchFull[2];
+        return `${yr}-${letter}`;
+      }
+
+      return clean;
+    }
+
+    function importCBACSV(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const contents = evt.target.result;
+        const lines = contents.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+        let parsedCount = 0;
+
+        lines.forEach(line => {
+          const parts = line.split(',').map(p => p.replace(/^"|"$/g, '').trim());
+          if (parts.length >= 2) {
+            const rawName = parts[0];
+            const nameCandidate = parseCbaBatteryName(rawName);
+            const ahCandidate = parseFloat(parts[2]) || parseFloat(parts[1]);
+
+            if (nameCandidate && !isNaN(ahCandidate) && ahCandidate > 0 && ahCandidate < 30) {
+              if (!batteryList.includes(nameCandidate)) {
+                batteryList.push(nameCandidate);
+              }
+              if (!batteryMeta[nameCandidate]) {
+                batteryMeta[nameCandidate] = {};
+              }
+              batteryMeta[nameCandidate].cbaAh = Number(ahCandidate.toFixed(2));
+              parsedCount++;
+            }
+          }
+        });
+
+        if (parsedCount > 0) {
+          saveBatteries();
+          saveMeta();
+          renderBatterySelectOptions();
+          populateFilterBatteryDropdown();
+          renderTable();
+          updateAllCharts();
+          syncMetaAndHealthToForm();
+          alert(`Successfully imported CBA Ah capacity for ${parsedCount} battery entry/entries!`);
+        } else {
+          alert('Could not find valid Battery Name and Amp-Hour Capacity values in the file.');
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+  </script>
+</body>
+</html>
